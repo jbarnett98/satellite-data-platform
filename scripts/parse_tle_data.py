@@ -1,7 +1,7 @@
 from pathlib import Path
 import pandas as pd
 
-file_path = Path("data/stations.txt")
+file_path = Path("data/active_satellites.txt")
 
 with open(file_path) as f:
     lines = f.readlines()
@@ -25,6 +25,7 @@ for i in range(0,len(lines),6):
 
     satellites.append({
         "satellite":name,
+        "norad_id":designator,
         "inclination":inclination,
         "eccentricity":eccentricity,
         "mean_motion":mean_motion,
@@ -32,5 +33,5 @@ for i in range(0,len(lines),6):
 
 df = pd.DataFrame(satellites)
 df.to_csv("data/satellites_clean.csv", index=False)
-
+print("Total Satellites:",len(df))
 print(df.head())
