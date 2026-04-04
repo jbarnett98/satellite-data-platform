@@ -2,10 +2,9 @@ import streamlit as st
 import pandas as pd
 import sys
 from pathlib import Path
-from config import ENRICHED_DATA_PATH
+from scripts.config import ENRICHED_DATA_PATH
 
 sys.path.append(str(Path(__file__).resolve().parent.parent / "scripts"))
-
 
 st.set_page_config(page_title="Satellite Dashboard", layout="wide")
 
