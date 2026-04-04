@@ -8,9 +8,9 @@ logger = logging.getLogger(__name__)
 def parse_tle_data():
 
     logger.info("Parsing TLE dataset")
-    
-    file_path = RAW_DATA_PATH
 
+    file_path = RAW_DATA_PATH
+    print(file_path)
     with open(file_path) as f:
         lines = f.readlines()
 
@@ -43,7 +43,7 @@ def parse_tle_data():
         })
 
     df = pd.DataFrame(satellites)
-    df.to_csv(CLEAN_DATA_PATH.csv, index=False)
+    df.to_csv(CLEAN_DATA_PATH, index=False)
 
     logger.info(f"Parsed {len(df)} satellites")
 

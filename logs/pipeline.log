@@ -140,3 +140,51 @@
 2026-04-04 15:45:55,089 | ERROR | Pipeline failed
 2026-04-04 15:45:55,089 | ERROR | [Errno 2] No such file or directory: 'data\\active_satellites.txt'
 2026-04-04 15:45:55,089 | INFO | Pipeline runtime: 9.88 seconds
+2026-04-04 15:47:44,136 | INFO | Starting satellite pipeline
+2026-04-04 15:47:44,136 | INFO | Step 1: Fetch satellite data
+2026-04-04 15:47:44,136 | INFO | Attempting URL
+2026-04-04 15:47:45,624 | WARNING | No new satellite data available — keeping existing file
+2026-04-04 15:47:45,625 | INFO | Step 2: Parse TLE data
+2026-04-04 15:47:45,626 | INFO | Parsing TLE dataset
+2026-04-04 15:47:45,654 | ERROR | Pipeline failed
+2026-04-04 15:47:45,654 | ERROR | 'WindowsPath' object has no attribute 'csv'
+2026-04-04 15:47:45,657 | INFO | Pipeline runtime: 1.52 seconds
+2026-04-04 15:49:22,465 | INFO | Starting satellite pipeline
+2026-04-04 15:49:22,465 | INFO | Step 1: Fetch satellite data
+2026-04-04 15:49:22,466 | INFO | Attempting URL
+2026-04-04 15:49:23,413 | WARNING | No new satellite data available — keeping existing file
+2026-04-04 15:49:23,414 | INFO | Step 2: Parse TLE data
+2026-04-04 15:49:23,414 | INFO | Parsing TLE dataset
+2026-04-04 15:49:23,445 | ERROR | Pipeline failed
+2026-04-04 15:49:23,445 | ERROR | 'WindowsPath' object has no attribute 'csv'
+2026-04-04 15:49:23,447 | INFO | Pipeline runtime: 0.98 seconds
+2026-04-04 15:50:21,971 | INFO | Starting satellite pipeline
+2026-04-04 15:50:21,971 | INFO | Step 1: Fetch satellite data
+2026-04-04 15:50:21,971 | INFO | Attempting URL
+2026-04-04 15:50:26,195 | WARNING | No new satellite data available — keeping existing file
+2026-04-04 15:50:26,196 | INFO | Step 2: Parse TLE data
+2026-04-04 15:50:26,196 | INFO | Parsing TLE dataset
+2026-04-04 15:50:26,224 | ERROR | Pipeline failed
+2026-04-04 15:50:26,224 | ERROR | 'WindowsPath' object has no attribute 'csv'
+2026-04-04 15:50:26,227 | INFO | Pipeline runtime: 4.26 seconds
+2026-04-04 15:50:44,364 | INFO | Starting satellite pipeline
+2026-04-04 15:50:44,364 | INFO | Step 1: Fetch satellite data
+2026-04-04 15:50:44,365 | INFO | Attempting URL
+2026-04-04 15:50:46,266 | WARNING | No new satellite data available — keeping existing file
+2026-04-04 15:50:46,267 | INFO | Step 2: Parse TLE data
+2026-04-04 15:50:46,267 | INFO | Parsing TLE dataset
+2026-04-04 15:50:46,298 | ERROR | Pipeline failed
+2026-04-04 15:50:46,298 | ERROR | 'WindowsPath' object has no attribute 'csv'
+2026-04-04 15:50:46,300 | INFO | Pipeline runtime: 1.94 seconds
+2026-04-04 15:59:15,052 | INFO | Starting satellite pipeline
+2026-04-04 15:59:15,052 | INFO | Step 1: Fetch satellite data
+2026-04-04 15:59:15,053 | INFO | Attempting URL
+2026-04-04 15:59:15,835 | WARNING | No new satellite data available — keeping existing file
+2026-04-04 15:59:15,836 | INFO | Step 2: Parse TLE data
+2026-04-04 15:59:15,836 | INFO | Parsing TLE dataset
+2026-04-04 15:59:15,910 | INFO | Parsed 14931 satellites
+2026-04-04 15:59:15,913 | INFO | Step 3: Enrich satellite data
+2026-04-04 15:59:15,913 | INFO | Calculating
+2026-04-04 15:59:15,992 | INFO | Satellite dataset enriched
+2026-04-04 15:59:15,992 | INFO | Pipeline completed successfully
+2026-04-04 15:59:15,992 | INFO | Pipeline runtime: 0.94 seconds
