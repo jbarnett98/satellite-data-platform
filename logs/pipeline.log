@@ -1,0 +1,142 @@
+2026-03-12 18:21:21,323 | INFO | Starting satellite pipeline
+2026-03-12 18:21:21,323 | INFO | Fetching satellite data
+2026-03-12 18:21:26,278 | INFO | Satellite data downloaded!
+2026-03-12 18:21:26,279 | INFO | Parsing TLE dataset
+2026-03-12 18:21:26,353 | INFO | Parsed 14683 satellites
+2026-03-12 18:21:26,356 | INFO | Pipeline complete
+2026-03-12 18:29:56,325 | INFO | Starting satellite pipeline
+2026-03-12 18:29:56,326 | INFO | Fetching satellite data
+2026-03-12 18:30:01,646 | INFO | Satellite data downloaded!
+2026-03-12 18:30:01,647 | INFO | Step 2: Parse TLE data
+2026-03-12 18:30:01,647 | INFO | Parsing TLE dataset
+2026-03-12 18:30:01,723 | INFO | Parsed 14683 satellites
+2026-03-12 18:30:01,725 | INFO | Pipeline completed successfully
+2026-03-12 18:30:01,729 | INFO | Pipeline runtime: 5.4 seconds
+2026-03-12 18:30:50,218 | INFO | Starting satellite pipeline
+2026-03-12 18:30:50,219 | INFO | Step 1: Fetch satellite data
+2026-03-12 18:30:50,219 | INFO | Fetching satellite data
+2026-03-12 18:30:56,020 | INFO | Satellite data downloaded!
+2026-03-12 18:30:56,021 | INFO | Step 2: Parse TLE data
+2026-03-12 18:30:56,021 | INFO | Parsing TLE dataset
+2026-03-12 18:30:56,098 | INFO | Parsed 14683 satellites
+2026-03-12 18:30:56,100 | INFO | Pipeline completed successfully
+2026-03-12 18:30:56,100 | INFO | Pipeline runtime: 5.88 seconds
+2026-04-04 13:11:06,480 | INFO | Starting satellite pipeline
+2026-04-04 13:11:06,480 | INFO | Step 1: Fetch satellite data
+2026-04-04 13:11:06,480 | INFO | Fetching satellite data
+2026-04-04 13:11:11,360 | INFO | Satellite data downloaded!
+2026-04-04 13:11:11,365 | INFO | Step 2: Parse TLE data
+2026-04-04 13:11:11,365 | INFO | Parsing TLE dataset
+2026-04-04 13:11:11,445 | INFO | Parsed 14931 satellites
+2026-04-04 13:11:11,448 | INFO | Pipeline completed successfully
+2026-04-04 13:11:11,448 | INFO | Pipeline runtime: 4.97 seconds
+2026-04-04 13:33:47,560 | INFO | Starting satellite pipeline
+2026-04-04 13:33:47,560 | INFO | Step 1: Fetch satellite data
+2026-04-04 13:33:47,561 | INFO | Fetching satellite data
+2026-04-04 13:33:52,727 | INFO | Satellite data downloaded!
+2026-04-04 13:33:52,728 | INFO | Step 2: Parse TLE data
+2026-04-04 13:33:52,729 | INFO | Parsing TLE dataset
+2026-04-04 13:33:52,731 | INFO | Parsed 0 satellites
+2026-04-04 13:33:52,731 | INFO | Step 3: Enriching Satellite data
+2026-04-04 13:33:52,732 | ERROR | Pipeline failed
+2026-04-04 13:33:52,732 | ERROR | name 'enrich_satellite_data' is not defined
+2026-04-04 13:33:52,732 | INFO | Pipeline runtime: 5.17 seconds
+2026-04-04 13:37:13,364 | INFO | Starting satellite pipeline
+2026-04-04 13:37:13,364 | INFO | Step 1: Fetch satellite data
+2026-04-04 13:37:13,364 | INFO | Fetching satellite data
+2026-04-04 13:37:14,519 | INFO | Satellite data downloaded!
+2026-04-04 13:37:14,521 | INFO | Step 2: Parse TLE data
+2026-04-04 13:37:14,521 | INFO | Parsing TLE dataset
+2026-04-04 13:37:14,526 | ERROR | Pipeline failed
+2026-04-04 13:37:14,526 | ERROR | could not convert string to float: 'is'
+2026-04-04 13:37:14,526 | INFO | Pipeline runtime: 1.16 seconds
+2026-04-04 13:40:35,334 | INFO | Starting satellite pipeline
+2026-04-04 13:40:35,334 | INFO | Step 1: Fetch satellite data
+2026-04-04 13:40:35,334 | INFO | Fetching satellite data
+2026-04-04 13:40:36,414 | INFO | Satellite data downloaded!
+2026-04-04 13:40:36,415 | INFO | Step 2: Parse TLE data
+2026-04-04 13:40:36,415 | INFO | Parsing TLE dataset
+2026-04-04 13:40:36,416 | ERROR | Pipeline failed
+2026-04-04 13:40:36,416 | ERROR | could not convert string to float: 'is'
+2026-04-04 13:40:36,416 | INFO | Pipeline runtime: 1.08 seconds
+2026-04-04 13:44:35,667 | INFO | Starting satellite pipeline
+2026-04-04 13:44:35,667 | INFO | Step 1: Fetch satellite data
+2026-04-04 13:44:35,667 | INFO | Fetching satellite data
+2026-04-04 13:44:38,625 | INFO | Satellite data downloaded!
+2026-04-04 13:44:38,626 | INFO | Step 2: Parse TLE data
+2026-04-04 13:44:38,626 | INFO | Parsing TLE dataset
+2026-04-04 13:44:38,627 | ERROR | Pipeline failed
+2026-04-04 13:44:38,627 | ERROR | could not convert string to float: 'is'
+2026-04-04 13:44:38,628 | INFO | Pipeline runtime: 2.96 seconds
+2026-04-04 13:48:06,407 | INFO | Starting satellite pipeline
+2026-04-04 13:48:06,407 | INFO | Step 1: Fetch satellite data
+2026-04-04 13:48:06,407 | INFO | Attempting URL
+2026-04-04 13:48:08,393 | INFO | Satellite data downloaded!
+2026-04-04 13:48:08,394 | INFO | Step 2: Parse TLE data
+2026-04-04 13:48:08,395 | INFO | Parsing TLE dataset
+2026-04-04 13:48:08,395 | ERROR | Pipeline failed
+2026-04-04 13:48:08,395 | ERROR | [Errno 2] No such file or directory: 'data\\active_satellites.txt'
+2026-04-04 13:48:08,395 | INFO | Pipeline runtime: 1.99 seconds
+2026-04-04 13:49:54,537 | INFO | Starting satellite pipeline
+2026-04-04 13:49:54,537 | INFO | Step 1: Fetch satellite data
+2026-04-04 13:49:54,538 | INFO | Attempting URL
+2026-04-04 13:49:55,405 | INFO | Satellite data downloaded!
+2026-04-04 13:49:55,406 | INFO | Step 2: Parse TLE data
+2026-04-04 13:49:55,406 | INFO | Parsing TLE dataset
+2026-04-04 13:49:55,406 | ERROR | Pipeline failed
+2026-04-04 13:49:55,407 | ERROR | [Errno 2] No such file or directory: 'data\\active_satellites.txt'
+2026-04-04 13:49:55,407 | INFO | Pipeline runtime: 0.87 seconds
+2026-04-04 13:50:53,380 | INFO | Starting satellite pipeline
+2026-04-04 13:50:53,380 | INFO | Step 1: Fetch satellite data
+2026-04-04 13:50:53,380 | INFO | Attempting URL
+2026-04-04 13:50:54,207 | INFO | Satellite data downloaded!
+2026-04-04 13:50:54,209 | INFO | Step 2: Parse TLE data
+2026-04-04 13:50:54,209 | INFO | Parsing TLE dataset
+2026-04-04 13:50:54,209 | ERROR | Pipeline failed
+2026-04-04 13:50:54,209 | ERROR | [Errno 2] No such file or directory: 'data\\active_satellites.txt'
+2026-04-04 13:50:54,209 | INFO | Pipeline runtime: 0.83 seconds
+2026-04-04 13:58:50,808 | INFO | Starting satellite pipeline
+2026-04-04 13:58:50,808 | INFO | Step 1: Fetch satellite data
+2026-04-04 13:58:50,809 | INFO | Attempting URL
+2026-04-04 13:58:51,581 | WARNING | No new satellite data available — keeping existing file
+2026-04-04 13:58:51,582 | INFO | Step 2: Parse TLE data
+2026-04-04 13:58:51,583 | INFO | Parsing TLE dataset
+2026-04-04 13:58:51,583 | ERROR | Pipeline failed
+2026-04-04 13:58:51,583 | ERROR | [Errno 2] No such file or directory: 'data\\active_satellites.txt'
+2026-04-04 13:58:51,583 | INFO | Pipeline runtime: 0.77 seconds
+2026-04-04 14:43:38,772 | INFO | Starting satellite pipeline
+2026-04-04 14:43:38,772 | INFO | Step 1: Fetch satellite data
+2026-04-04 14:43:38,772 | INFO | Attempting URL
+2026-04-04 14:43:39,567 | WARNING | No new satellite data available — keeping existing file
+2026-04-04 14:43:39,568 | INFO | Step 2: Parse TLE data
+2026-04-04 14:43:39,568 | INFO | Parsing TLE dataset
+2026-04-04 14:43:39,569 | ERROR | Pipeline failed
+2026-04-04 14:43:39,569 | ERROR | [Errno 2] No such file or directory: 'data\\active_satellites.txt'
+2026-04-04 14:43:39,569 | INFO | Pipeline runtime: 0.8 seconds
+2026-04-04 14:52:58,612 | INFO | Starting satellite pipeline
+2026-04-04 14:52:58,612 | INFO | Step 1: Fetch satellite data
+2026-04-04 14:52:58,612 | INFO | Attempting URL
+2026-04-04 14:52:59,423 | WARNING | No new satellite data available — keeping existing file
+2026-04-04 14:52:59,424 | INFO | Step 2: Parse TLE data
+2026-04-04 14:52:59,424 | INFO | Parsing TLE dataset
+2026-04-04 14:52:59,425 | ERROR | Pipeline failed
+2026-04-04 14:52:59,425 | ERROR | [Errno 2] No such file or directory: 'data\\active_satellites.txt'
+2026-04-04 14:52:59,425 | INFO | Pipeline runtime: 0.81 seconds
+2026-04-04 14:58:48,320 | INFO | Starting satellite pipeline
+2026-04-04 14:58:48,320 | INFO | Step 1: Fetch satellite data
+2026-04-04 14:58:48,320 | INFO | Attempting URL
+2026-04-04 14:58:49,258 | WARNING | No new satellite data available — keeping existing file
+2026-04-04 14:58:49,259 | INFO | Step 2: Parse TLE data
+2026-04-04 14:58:49,259 | INFO | Parsing TLE dataset
+2026-04-04 14:58:49,259 | ERROR | Pipeline failed
+2026-04-04 14:58:49,259 | ERROR | [Errno 2] No such file or directory: 'data\\active_satellites.txt'
+2026-04-04 14:58:49,260 | INFO | Pipeline runtime: 0.94 seconds
+2026-04-04 15:45:45,205 | INFO | Starting satellite pipeline
+2026-04-04 15:45:45,205 | INFO | Step 1: Fetch satellite data
+2026-04-04 15:45:45,206 | INFO | Attempting URL
+2026-04-04 15:45:55,087 | INFO | Satellite data downloaded to C:\Users\Jack\Documents\satellite-data-platform\data\satellites_raw.txt
+2026-04-04 15:45:55,088 | INFO | Step 2: Parse TLE data
+2026-04-04 15:45:55,088 | INFO | Parsing TLE dataset
+2026-04-04 15:45:55,089 | ERROR | Pipeline failed
+2026-04-04 15:45:55,089 | ERROR | [Errno 2] No such file or directory: 'data\\active_satellites.txt'
+2026-04-04 15:45:55,089 | INFO | Pipeline runtime: 9.88 seconds

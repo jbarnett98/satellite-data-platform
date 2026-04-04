@@ -1,15 +1,30 @@
 import requests
 from pathlib import Path
+import logging
+from config import RAW_DATA_PATH, CELESTRAK_URL
 
-url = "https://celestrak.org/NORAD/elements/gp.php?GROUP=active&FORMAT=tle"
+logger = logging.getLogger(__name__)
 
-response = requests.get(url)
+def fetch_satellite_data():
 
-data_path = Path("data/active_satellites.txt")
+    logger.info("Attempting URL")
 
-data_path.parent.mkdir(parents=True, exist_ok=True)
+    response = requests.get(CELESTRAK_URL)
 
-with open(data_path, "w") as f:
-    f.write(response.text)
+    text = response.text
 
-print("Satellite data downloaded!")
+    if "GP data has not updated" in text:
+        logger.warning("No new satellite data available — keeping existing file")
+        return
+
+    RAW_DATA_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+    with open(RAW_DATA_PATH, "w") as f:
+        f.write(text)
+
+    logger.info(f"Satellite data downloaded to {RAW_DATA_PATH}")
+
+if __name__ == "__main__":
+    fetch_satellite_data()
+
+    
