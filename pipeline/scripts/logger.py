@@ -1,5 +1,5 @@
 import logging
-from config import LOG_DIR
+from pipeline.scripts.config import LOG_DIR
 
 from pathlib import Path
 

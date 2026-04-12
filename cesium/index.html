@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Satellite Globe</title>
+
+  <link
+    href="https://cesium.com/downloads/cesiumjs/releases/1.122/Build/Cesium/Widgets/widgets.css"
+    rel="stylesheet"
+  />
+
+  <script src="https://cesium.com/downloads/cesiumjs/releases/1.122/Build/Cesium/Cesium.js"></script>
+
+  <style>
+    html, body, #cesiumContainer {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #020617;
+    }
+
+    #filterPanel {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      z-index: 10;
+      width: 360px;
+      background: rgba(15, 23, 42, 0.82);
+      color: #e2e8f0;
+      padding: 14px 16px;
+      border-radius: 14px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(148, 163, 184, 0.18);
+    }
+
+    #panelTitle {
+      font-size: 16px;
+      font-weight: 700;
+      margin-bottom: 10px;
+      letter-spacing: 0.2px;
+    }
+
+    .controlRow {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+      font-size: 14px;
+      color: #cbd5e1;
+    }
+
+    .buttonRow {
+      display: flex;
+      gap: 8px;
+      margin-top: 6px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+
+    .panelButton {
+      background: rgba(34, 211, 238, 0.12);
+      color: #cffafe;
+      border: 1px solid rgba(34, 211, 238, 0.28);
+      border-radius: 10px;
+      padding: 8px 12px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+    }
+
+    .panelButton:hover {
+      background: rgba(34, 211, 238, 0.18);
+      border-color: rgba(34, 211, 238, 0.4);
+      transform: translateY(-1px);
+    }
+
+    .panelButton.active {
+      background: rgba(34, 211, 238, 0.22);
+      border-color: rgba(103, 232, 249, 0.55);
+    }
+
+    #satelliteInfo {
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid rgba(148, 163, 184, 0.16);
+      font-size: 13px;
+      line-height: 1.5;
+      color: #cbd5e1;
+    }
+
+    #satelliteInfo strong {
+      display: block;
+      margin-bottom: 6px;
+      color: #f8fafc;
+      font-size: 14px;
+    }
+
+    .muted {
+      color: #94a3b8;
+    }
+
+    input[type="checkbox"] {
+      accent-color: #22d3ee;
+      cursor: pointer;
+    }
+
+    .label {
+      color: #94a3b8;
+    }
+
+    .value {
+      color: #e2e8f0;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="filterPanel">
+    <div id="panelTitle">Satellite Tracker</div>
+
+    <div class="controlRow">
+      <input type="checkbox" id="toggleStarlink" checked />
+      <label for="toggleStarlink">Show Starlink</label>
+    </div>
+
+    <div class="buttonRow">
+      <button id="resetViewButton" class="panelButton">Reset View</button>
+      <button id="toggleAnimationButton" class="panelButton">Pause Animation</button>
+      <button id="centerEarthButton" class="panelButton">Center Earth</button>
+      <button id="centerSelectedButton" class="panelButton">Center Selected</button>
+    </div>
+
+    <div id="satelliteInfo">
+      <strong>Selected satellite</strong>
+      <span class="muted">Click a satellite to inspect its orbit.</span>
+    </div>
+  </div>
+
+  <div id="cesiumContainer"></div>
+
+  <script>
+    Cesium.Ion.defaultAccessToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJjZTc2ZDhlMS1kOGMyLTRlODYtODkzMi0xMTY4ODQ5MDQ3YjgiLCJpZCI6NDE1MjI4LCJpYXQiOjE3NzU5ODEzMDV9.g4q42Fnd8K8dYHEJPzyP9hCZZaPzDHkrL7wgKX5OE0s";
+
+    async function initCesium() {
+      try {
+        const terrainProvider = await Cesium.createWorldTerrainAsync();
+
+        const viewer = new Cesium.Viewer("cesiumContainer", {
+          terrainProvider,
+          animation: false,
+          timeline: false,
+          baseLayerPicker: false,
+          geocoder: false,
+          homeButton: true,
+          sceneModePicker: false,
+          navigationHelpButton: false,
+          fullscreenButton: true,
+          selectionIndicator: true,
+          infoBox: false,
+          shouldAnimate: true
+        });
+
+        viewer.scene.globe.translucency.enabled = false;
+        viewer.scene.globe.enableLighting = true;
+        viewer.scene.globe.dynamicAtmosphereLighting = false;
+        viewer.scene.globe.showGroundAtmosphere = false;
+        viewer.scene.globe.depthTestAgainstTerrain = false;
+        viewer.scene.backgroundColor = Cesium.Color.fromCssColorString("#020617");
+
+        viewer.imageryLayers.removeAll();
+
+        const nightLayer = await Cesium.IonImageryProvider.fromAssetId(3812);
+        viewer.imageryLayers.addImageryProvider(nightLayer);
+
+        const imageryLayer = viewer.imageryLayers.get(0);
+        imageryLayer.brightness = 1.2;
+        imageryLayer.contrast = 1.1;
+        imageryLayer.gamma = 0.9;
+
+        const infoBox = document.getElementById("satelliteInfo");
+        const toggle = document.getElementById("toggleStarlink");
+        const resetViewButton = document.getElementById("resetViewButton");
+        const toggleAnimationButton = document.getElementById("toggleAnimationButton");
+        const centerEarthButton = document.getElementById("centerEarthButton");
+        const centerSelectedButton = document.getElementById("centerSelectedButton");
+
+        const satelliteEntities = [];
+
+        let orbitPathEntity = null;
+        let selectedSatelliteEntity = null;
+        let animatedSatelliteEntity = null;
+        let animationTimer = null;
+        let currentOrbitPathData = [];
+        let animationPaused = false;
+
+        const COLORS = {
+          normal: Cesium.Color.fromCssColorString("#B8C7D9").withAlpha(0.8),
+          starlink: Cesium.Color.fromCssColorString("#7DD3FC").withAlpha(0.9),
+          dimNormal: Cesium.Color.fromCssColorString("#B8C7D9").withAlpha(0.14),
+          dimStarlink: Cesium.Color.fromCssColorString("#7DD3FC").withAlpha(0.18),
+          selected: Cesium.Color.fromCssColorString("#67E8F9"),
+          orbit: Cesium.Color.fromCssColorString("#22D3EE").withAlpha(1.0),
+          animated: Cesium.Color.fromCssColorString("#FFFFFF")
+        };
+
+        function kmToCartesian(point) {
+          return new Cesium.Cartesian3(
+            Number(point.x_km) * 1000,
+            Number(point.y_km) * 1000,
+            Number(point.z_km) * 1000
+          );
+        }
+
+        function defaultColorForEntity(entity) {
+          const category = entity.properties?.category?.getValue?.();
+          return category === "starlink" ? COLORS.starlink : COLORS.normal;
+        }
+
+        function dimColorForEntity(entity) {
+          const category = entity.properties?.category?.getValue?.();
+          return category === "starlink" ? COLORS.dimStarlink : COLORS.dimNormal;
+        }
+
+        function updateInfoPanelDefault() {
+          infoBox.innerHTML = `
+            <strong>Selected satellite</strong>
+            <span class="muted">Click a satellite to inspect its orbit.</span>
+          `;
+        }
+
+        function updateInfoPanel(sat) {
+        infoBox.innerHTML = `
+            <strong>${sat.object_name || sat.satellite || "Unknown satellite"}</strong>
+
+            <div><span class="label">NORAD ID:</span> <span class="value">${sat.norad_id ?? "N/A"}</span></div>
+            <div><span class="label">Object ID:</span> <span class="value">${sat.object_id ?? "N/A"}</span></div>
+            <div><span class="label">Object type:</span> <span class="value">${sat.object_type ?? "N/A"}</span></div>
+            <div><span class="label">Owner:</span> <span class="value">${sat.owner ?? "N/A"}</span></div>
+            <div><span class="label">Launch date:</span> <span class="value">${sat.launch_date ?? "N/A"}</span></div>
+            <div><span class="label">Launch site:</span> <span class="value">${sat.launch_site ?? "N/A"}</span></div>
+            <div><span class="label">Orbit type:</span> <span class="value">${sat.orbit_type ?? "N/A"}</span></div>
+            <div><span class="label">Altitude:</span> <span class="value">${sat.altitude_km != null ? Number(sat.altitude_km).toFixed(1) : "N/A"} km</span></div>
+            <div><span class="label">Apogee:</span> <span class="value">${sat.apogee_km ?? "N/A"} km</span></div>
+            <div><span class="label">Perigee:</span> <span class="value">${sat.perigee_km ?? "N/A"} km</span></div>
+            <div><span class="label">Inclination:</span> <span class="value">${sat.catalog_inclination_deg != null ? Number(sat.catalog_inclination_deg).toFixed(2) : "N/A"}°</span></div>
+        `;
+        }
+
+        function clearOrbitPath() {
+          if (orbitPathEntity) {
+            viewer.entities.remove(orbitPathEntity);
+            orbitPathEntity = null;
+          }
+        }
+
+        function stopRealtimeAnimation() {
+          if (animationTimer) {
+            clearInterval(animationTimer);
+            animationTimer = null;
+          }
+        }
+
+        function removeAnimatedSatellite() {
+          stopRealtimeAnimation();
+
+          if (animatedSatelliteEntity) {
+            viewer.entities.remove(animatedSatelliteEntity);
+            animatedSatelliteEntity = null;
+          }
+
+          currentOrbitPathData = [];
+        }
+
+        function restoreAllSatellitesAppearance() {
+          satelliteEntities.forEach((entity) => {
+            const isStarlinkVisible =
+              toggle.checked || entity.properties?.category?.getValue?.() !== "starlink";
+
+            entity.show = isStarlinkVisible;
+            entity.point.pixelSize = 5;
+            entity.point.color = defaultColorForEntity(entity);
+          });
+        }
+
+        function resetPreviousSelection() {
+          if (!selectedSatelliteEntity) {
+            return;
+          }
+
+          selectedSatelliteEntity.point.pixelSize = 5;
+          selectedSatelliteEntity.point.color = defaultColorForEntity(selectedSatelliteEntity);
+          selectedSatelliteEntity = null;
+        }
+
+        function dimNonSelectedSatellites(selectedEntity) {
+          satelliteEntities.forEach((entity) => {
+            const isSelected = entity === selectedEntity;
+            const isStarlink = entity.properties?.category?.getValue?.() === "starlink";
+
+            if (isSelected) {
+              entity.show = false;
+              return;
+            }
+
+            if (isStarlink && !toggle.checked) {
+              entity.show = false;
+              return;
+            }
+
+            entity.show = true;
+            entity.point.pixelSize = 4;
+            entity.point.color = dimColorForEntity(entity);
+          });
+        }
+
+        function updateAnimationButtonState() {
+          if (animationPaused) {
+            toggleAnimationButton.textContent = "Resume Animation";
+            toggleAnimationButton.classList.add("active");
+          } else {
+            toggleAnimationButton.textContent = "Pause Animation";
+            toggleAnimationButton.classList.remove("active");
+          }
+        }
+
+        function resetView() {
+          clearOrbitPath();
+          removeAnimatedSatellite();
+          resetPreviousSelection();
+          restoreAllSatellitesAppearance();
+          updateInfoPanelDefault();
+
+          animationPaused = false;
+          updateAnimationButtonState();
+
+          viewer.trackedEntity = undefined;
+          viewer.zoomTo(viewer.entities);
+        }
+
+        function addSatellite(sat) {
+          if (
+            sat == null ||
+            sat.satellite == null ||
+            sat.x_km == null ||
+            sat.y_km == null ||
+            sat.z_km == null
+          ) {
+            return;
+          }
+
+          const x = Number(sat.x_km);
+          const y = Number(sat.y_km);
+          const z = Number(sat.z_km);
+
+          if (Number.isNaN(x) || Number.isNaN(y) || Number.isNaN(z)) {
+            return;
+          }
+
+          const isStarlink = sat.satellite.toLowerCase().includes("starlink");
+
+          const entity = viewer.entities.add({
+            name: sat.satellite,
+            position: new Cesium.Cartesian3(x * 1000, y * 1000, z * 1000),
+            point: {
+              pixelSize: 5,
+              color: isStarlink ? COLORS.starlink : COLORS.normal,
+              outlineColor: Cesium.Color.BLACK.withAlpha(0.4),
+              outlineWidth: 1
+            },
+            properties: {
+              satellite: sat.satellite ?? null,
+              norad_id: sat.norad_id ?? null,
+              orbit_type: sat.orbit_type ?? null,
+              altitude_km: sat.altitude_km ?? null,
+              category: isStarlink ? "starlink" : "other"
+            }
+          });
+
+          satelliteEntities.push(entity);
+        }
+
+        function getClosestPointToNow(pathPoints) {
+          const now = Date.now();
+
+          let closestPoint = pathPoints[0];
+          let smallestDiff = Math.abs(new Date(pathPoints[0].timestamp).getTime() - now);
+
+          for (const point of pathPoints) {
+            const diff = Math.abs(new Date(point.timestamp).getTime() - now);
+            if (diff < smallestDiff) {
+              smallestDiff = diff;
+              closestPoint = point;
+            }
+          }
+
+          return closestPoint;
+        }
+
+        function createAnimatedSatelliteFromPath(sat, pathPoints) {
+          if (!pathPoints || pathPoints.length === 0) {
+            return;
+          }
+
+          removeAnimatedSatellite();
+
+          const closestPoint = getClosestPointToNow(pathPoints);
+
+          animatedSatelliteEntity = viewer.entities.add({
+            name: `${sat.satellite} (Live)`,
+            position: kmToCartesian(closestPoint),
+            point: {
+              pixelSize: 9,
+              color: COLORS.animated,
+              outlineColor: COLORS.selected,
+              outlineWidth: 2
+            }
+          });
+        }
+
+        function stepRealtimeAnimation() {
+          if (!animatedSatelliteEntity || currentOrbitPathData.length === 0) {
+            return;
+          }
+
+          const closestPoint = getClosestPointToNow(currentOrbitPathData);
+          animatedSatelliteEntity.position = kmToCartesian(closestPoint);
+        }
+
+        function startRealtimeAnimation() {
+          if (animationPaused) {
+            return;
+          }
+
+          if (!animatedSatelliteEntity || currentOrbitPathData.length === 0) {
+            return;
+          }
+
+          stopRealtimeAnimation();
+          stepRealtimeAnimation();
+          animationTimer = setInterval(stepRealtimeAnimation, 1000);
+        }
+
+        async function fetchSatelliteDetails(noradId) {
+            const response = await fetch(`http://localhost:8000/satellites/${noradId}`);
+
+            if (!response.ok) {
+                throw new Error(`Satellite detail request failed with status ${response.status}`);
+            }
+
+            return await response.json();
+        }
+
+
+        async function loadOrbitPath(noradId, sat) {
+          try {
+            const response = await fetch(`http://localhost:8000/satellites/${noradId}/orbit-path`);
+
+            if (!response.ok) {
+              throw new Error(`Orbit path request failed with status ${response.status}`);
+            }
+
+            const data = await response.json();
+            console.log("Orbit path payload:", data);
+
+            clearOrbitPath();
+            removeAnimatedSatellite();
+
+            const validPoints = data.points.filter((point) =>
+              point.x_km != null &&
+              point.y_km != null &&
+              point.z_km != null
+            );
+
+            console.log("Valid Cartesian points:", validPoints.length);
+
+            const pathPositions = validPoints.map((point) => kmToCartesian(point));
+
+            if (pathPositions.length === 0) {
+              console.warn("No valid Cartesian orbit path points returned.");
+              return;
+            }
+
+            orbitPathEntity = viewer.entities.add({
+              name: `${data.satellite} Orbit Path`,
+              polyline: {
+                positions: pathPositions,
+                width: 3,
+                material: COLORS.orbit,
+                clampToGround: false
+              }
+            });
+
+            currentOrbitPathData = validPoints;
+            createAnimatedSatelliteFromPath(sat, validPoints);
+            startRealtimeAnimation();
+          } catch (err) {
+            console.error("Failed to load orbit path:", err);
+          }
+        }
+
+        try {
+          const response = await fetch("http://localhost:8000/satellites");
+
+          if (!response.ok) {
+            throw new Error(`API request failed with status ${response.status}`);
+          }
+
+          const data = await response.json();
+          data.forEach(addSatellite);
+
+          if (viewer.entities.values.length > 0) {
+            viewer.zoomTo(viewer.entities);
+          }
+        } catch (err) {
+          console.error("Error fetching satellites:", err);
+        }
+
+        toggle.addEventListener("change", () => {
+          if (selectedSatelliteEntity) {
+            dimNonSelectedSatellites(selectedSatelliteEntity);
+          } else {
+            restoreAllSatellitesAppearance();
+          }
+        });
+
+        resetViewButton.addEventListener("click", () => {
+          resetView();
+        });
+
+        toggleAnimationButton.addEventListener("click", () => {
+          animationPaused = !animationPaused;
+          updateAnimationButtonState();
+
+          if (animationPaused) {
+            stopRealtimeAnimation();
+          } else {
+            startRealtimeAnimation();
+          }
+        });
+
+        centerEarthButton.addEventListener("click", () => {
+          viewer.trackedEntity = undefined;
+          viewer.camera.flyHome(1.5);
+        });
+
+        centerSelectedButton.addEventListener("click", () => {
+          const target = animatedSatelliteEntity || selectedSatelliteEntity;
+          if (!target) {
+            return;
+          }
+
+          viewer.trackedEntity = undefined;
+          viewer.flyTo(target, {
+            duration: 1.5
+          });
+        });
+
+        const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
+        handler.setInputAction(async function (click) {
+          const pickedObject = viewer.scene.pick(click.position);
+
+          if (!Cesium.defined(pickedObject) || !pickedObject.id) {
+            return;
+          }
+
+          const entity = pickedObject.id;
+          const props = entity.properties;
+
+          if (!props || !props.norad_id) {
+            return;
+          }
+
+          const sat = {
+            satellite: props.satellite ? props.satellite.getValue() : entity.name,
+            norad_id: props.norad_id.getValue(),
+            orbit_type: props.orbit_type ? props.orbit_type.getValue() : null,
+            altitude_km: props.altitude_km ? props.altitude_km.getValue() : null
+          };
+
+          clearOrbitPath();
+          removeAnimatedSatellite();
+          resetPreviousSelection();
+
+          selectedSatelliteEntity = entity;
+          dimNonSelectedSatellites(entity);
+
+          try {
+            const detailedSat = await fetchSatelliteDetails(sat.norad_id);
+            updateInfoPanel(detailedSat);
+          } catch (err) {
+            console.error("Failed to load satellite details:", err);
+            updateInfoPanel(sat);
+          }
+
+          await loadOrbitPath(sat.norad_id, sat);
+        }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+
+        updateInfoPanelDefault();
+        updateAnimationButtonState();
+
+      } catch (err) {
+        console.error("Failed to initialize Cesium:", err);
+      }
+    }
+
+    initCesium();
+  </script>
+</body>
+</html>

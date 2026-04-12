@@ -1,0 +1,27 @@
+services:
+  pipeline:
+    build: ./pipeline
+    container_name: satellite-pipeline
+    env_file:
+      - .env
+    volumes:
+      - ./pipeline/data:/app/pipeline/data
+    restart: "no"
+
+  fastapi:
+    build: ./fastapi
+    container_name: fastapi
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    restart: unless-stopped
+
+  cesium:
+    image: nginx:alpine
+    container_name: cesium
+    ports:
+      - "8081:80"
+    volumes:
+      - ./cesium:/usr/share/nginx/html:ro
+    restart: unless-stopped
