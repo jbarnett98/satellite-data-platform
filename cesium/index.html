@@ -445,7 +445,7 @@
         }
 
         async function fetchSatelliteDetails(noradId) {
-            const response = await fetch(`http://localhost:8000/satellites/${noradId}`);
+            const response = await fetch(`https:https://sa-b3a4209248f442df867133e8e8fa983e.ecs.eu-west-2.on.aws/${noradId}`);
 
             if (!response.ok) {
                 throw new Error(`Satellite detail request failed with status ${response.status}`);
@@ -457,7 +457,7 @@
 
         async function loadOrbitPath(noradId, sat) {
           try {
-            const response = await fetch(`http://localhost:8000/satellites/${noradId}/orbit-path`);
+            const response = await fetch(`https://sa-b3a4209248f442df867133e8e8fa983e.ecs.eu-west-2.on.aws/${noradId}/orbit-path`);
 
             if (!response.ok) {
               throw new Error(`Orbit path request failed with status ${response.status}`);
@@ -503,7 +503,7 @@
         }
 
         try {
-          const response = await fetch("http://localhost:8000/satellites");
+          const response = await fetch("https:https://sa-b3a4209248f442df867133e8e8fa983e.ecs.eu-west-2.on.aws/");
 
           if (!response.ok) {
             throw new Error(`API request failed with status ${response.status}`);
