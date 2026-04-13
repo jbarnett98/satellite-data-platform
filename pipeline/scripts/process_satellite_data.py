@@ -111,6 +111,11 @@ def load_and_parse_raw_tle() -> pd.DataFrame:
     with open(RAW_DATA_PATH, "r", encoding="utf-8", errors="ignore") as f:
         lines = f.readlines()
 
+    logger.info("Raw file contains %d total lines", len(lines))
+
+    preview_count = min(12, len(lines))
+    logger.info("First %d raw lines:\n%s", preview_count, "".join(lines[:preview_count]))
+
     satellites = parse_tle_records(lines)
     df = pd.DataFrame(satellites)
 

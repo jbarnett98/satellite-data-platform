@@ -1,7 +1,9 @@
+import json
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
+import logging
+import time
 
-import numpy as np
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sgp4.api import Satrec, jday
@@ -9,6 +11,9 @@ from skyfield.api import EarthSatellite, load, wgs84
 from sqlalchemy import create_engine, text
 
 DATABASE_URL = os.environ.get("SQLALCHEMY_DATABASE_URI")
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 if not DATABASE_URL:
     raise ValueError("SQLALCHEMY_DATABASE_URI environment variable is not set")
@@ -25,6 +30,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+SATELLITES_CACHE = {
+    "data": None,
+    "timestamp": None,
+}
+SATELLITES_CACHE_TTL_SECONDS = 30
+
 
 def propagate_tle(line1: str, line2: str, when: datetime) -> dict | None:
     """
@@ -33,11 +44,6 @@ def propagate_tle(line1: str, line2: str, when: datetime) -> dict | None:
     Returns:
     - Cartesian position directly from SGP4 (x_km, y_km, z_km)
     - Geodetic position derived for display (latitude, longitude, altitude_km)
-
-    This function is the single orbital source of truth for:
-    - /satellites
-    - /satellites/{norad_id}
-    - /satellites/{norad_id}/orbit-path
     """
     try:
         satrec = Satrec.twoline2rv(line1, line2)
@@ -58,7 +64,6 @@ def propagate_tle(line1: str, line2: str, when: datetime) -> dict | None:
 
         x_km, y_km, z_km = position_km
 
-        # Use Skyfield for geodetic display conversion from the same TLE/time
         satellite = EarthSatellite(line1, line2, "SAT", ts)
         t = ts.from_datetime(when)
         geocentric = satellite.at(t)
@@ -84,11 +89,20 @@ def propagate_tle(line1: str, line2: str, when: datetime) -> dict | None:
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok"}
+    start = time.perf_counter()
+
+    response = {"status": "ok"}
+
+    elapsed = time.perf_counter() - start
+    logger.info("GET /health completed in %.3f seconds", elapsed)
+
+    return response
 
 
 @app.get("/satellites")
 def get_satellites():
+    total_start = time.perf_counter()
+
     query = text("""
         SELECT
             satellite,
@@ -101,11 +115,23 @@ def get_satellites():
     """)
 
     now = datetime.now(timezone.utc)
+    cached_data = SATELLITES_CACHE["data"]
+    cached_timestamp = SATELLITES_CACHE["timestamp"]
+
+    if cached_data is not None and cached_timestamp is not None:
+        age = (now - cached_timestamp).total_seconds()
+        if age < SATELLITES_CACHE_TTL_SECONDS:
+            logger.info("GET /satellites served from cache (age=%.1f seconds)", age)
+            return cached_data
+
     live_rows = []
 
+    db_start = time.perf_counter()
     with engine.connect() as connection:
         results = connection.execute(query).fetchall()
+    db_elapsed = time.perf_counter() - db_start
 
+    propagation_start = time.perf_counter()
     for row in results:
         record = dict(row._mapping)
 
@@ -121,25 +147,36 @@ def get_satellites():
 
         live_rows.append({
             "satellite": record["satellite"],
-            "line1": line1,
-            "line2": line2,
             "norad_id": record["norad_id"],
             "orbit_type": record["orbit_type"],
-            "mean_motion_rad_per_min": record["mean_motion_rad_per_min"],
-            "latitude": propagated["latitude"],
-            "longitude": propagated["longitude"],
             "altitude_km": propagated["altitude_km"],
             "x_km": propagated["x_km"],
             "y_km": propagated["y_km"],
             "z_km": propagated["z_km"],
             "position_computed_at": propagated["timestamp"],
         })
+    propagation_elapsed = time.perf_counter() - propagation_start
 
+    total_elapsed = time.perf_counter() - total_start
+
+    logger.info(
+        "GET /satellites completed in %.3f seconds | db=%.3f | propagation=%.3f | rows_in=%d | rows_out=%d",
+        total_elapsed,
+        db_elapsed,
+        propagation_elapsed,
+        len(results),
+        len(live_rows),
+    )
+
+    SATELLITES_CACHE["data"] = live_rows
+    SATELLITES_CACHE["timestamp"] = now
     return live_rows
 
 
 @app.get("/satellites/{norad_id}")
 def get_satellite(norad_id: int):
+    total_start = time.perf_counter()
+
     query = text("""
         SELECT
             s.satellite,
@@ -172,8 +209,10 @@ def get_satellite(norad_id: int):
         LIMIT 1
     """)
 
+    db_start = time.perf_counter()
     with engine.connect() as connection:
         result = connection.execute(query, {"norad_id": norad_id}).fetchone()
+    db_elapsed = time.perf_counter() - db_start
 
     if not result:
         raise HTTPException(status_code=404, detail="Satellite not found")
@@ -181,18 +220,26 @@ def get_satellite(norad_id: int):
     record = dict(result._mapping)
     now = datetime.now(timezone.utc)
 
+    propagation_start = time.perf_counter()
     propagated = propagate_tle(record["line1"], record["line2"], now)
+    propagation_elapsed = time.perf_counter() - propagation_start
+
     if propagated is None:
         raise HTTPException(status_code=500, detail="Failed to propagate satellite position")
 
+    total_elapsed = time.perf_counter() - total_start
+    logger.info(
+        "GET /satellites/%s completed in %.3f seconds | db=%.3f | propagation=%.3f",
+        norad_id,
+        total_elapsed,
+        db_elapsed,
+        propagation_elapsed,
+    )
+
     return {
         "satellite": record["satellite"],
-        "line1": record["line1"],
-        "line2": record["line2"],
         "norad_id": record["norad_id"],
         "orbit_type": record["orbit_type"],
-        "mean_motion_rad_per_min": record["mean_motion_rad_per_min"],
-
         "latitude": propagated["latitude"],
         "longitude": propagated["longitude"],
         "altitude_km": propagated["altitude_km"],
@@ -200,7 +247,6 @@ def get_satellite(norad_id: int):
         "y_km": propagated["y_km"],
         "z_km": propagated["z_km"],
         "position_computed_at": propagated["timestamp"],
-
         "object_name": record.get("object_name"),
         "object_id": record.get("object_id"),
         "object_type": record.get("object_type"),
@@ -220,15 +266,14 @@ def get_satellite(norad_id: int):
 
 
 @app.get("/satellites/{norad_id}/orbit-path")
-def get_orbit_path(norad_id: int, step_seconds: int = 10):
+def get_orbit_path(norad_id: int):
     query = text("""
         SELECT
-            satellite,
-            line1,
-            line2,
             norad_id,
-            mean_motion_rad_per_min
-        FROM satellites_latest
+            satellite,
+            orbital_period_minutes,
+            points_json
+        FROM satellite_orbit_paths
         WHERE norad_id = :norad_id
         LIMIT 1
     """)
@@ -237,40 +282,14 @@ def get_orbit_path(norad_id: int, step_seconds: int = 10):
         row = connection.execute(query, {"norad_id": norad_id}).fetchone()
 
     if not row:
-        raise HTTPException(status_code=404, detail="Satellite not found")
+        raise HTTPException(status_code=404, detail="Orbit path not found")
 
     record = dict(row._mapping)
-
-    mean_motion = record["mean_motion_rad_per_min"]
-    if mean_motion is None or mean_motion == 0:
-        raise HTTPException(status_code=400, detail="Invalid mean motion for orbit path")
-
-    orbital_period_minutes = float(2 * np.pi / mean_motion)
-    half_period_seconds = int((orbital_period_minutes * 60) / 2)
-
-    now = datetime.now(timezone.utc)
-    points = []
-
-    for offset in range(-half_period_seconds, half_period_seconds + 1, step_seconds):
-        t = now + timedelta(seconds=offset)
-
-        propagated = propagate_tle(record["line1"], record["line2"], t)
-        if propagated is None:
-            continue
-
-        points.append(propagated)
-
-    if not points:
-        raise HTTPException(status_code=500, detail="Failed to generate orbit path")
-
-    current_position = propagate_tle(record["line1"], record["line2"], now)
-    if current_position is None:
-        raise HTTPException(status_code=500, detail="Failed to propagate current position")
 
     return {
         "norad_id": record["norad_id"],
         "satellite": record["satellite"],
-        "orbital_period_minutes": orbital_period_minutes,
-        "current_position": current_position,
-        "points": points,
+        "orbital_period_minutes": record["orbital_period_minutes"],
+        "path_source": "precomputed",
+        "points": json.loads(record["points_json"]),
     }

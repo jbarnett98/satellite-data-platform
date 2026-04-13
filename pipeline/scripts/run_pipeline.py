@@ -5,6 +5,7 @@ from pipeline.scripts.fetch_satellite_metadata import fetch_satellite_metadata
 from pipeline.scripts.process_satellite_data import process_satellite_data
 from pipeline.scripts.store_in_sql import store_to_sql
 from pipeline.scripts.store_metadata_in_sql import store_metadata_to_sql
+from pipeline.scripts.generate_orbit_paths import generate_orbit_paths
 
 logger = logging.getLogger(__name__)
 
@@ -27,9 +28,14 @@ def run_pipeline() -> None:
 
     logger.info("Loading TLE/orbital data to database")
     store_to_sql()
-
+    
     logger.info("Loading metadata to database")
     store_metadata_to_sql()
+
+    logger.info("Generating orbit paths from satellites_latest")
+    generate_orbit_paths()
+
+
 
     logger.info("Pipeline finished successfully")
 
