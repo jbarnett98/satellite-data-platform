@@ -4,7 +4,8 @@ from typing import Dict, List, Optional
 
 import numpy as np
 import pandas as pd
-from sgp4.api import Satrec, jday
+from sgp4.api import Satrec
+from pipeline.scripts.orbital_utils import propagate_tle, tle_epoch_utc
 
 from pipeline.scripts.config import RAW_DATA_PATH, POSITION_DATA_PATH
 
@@ -144,7 +145,6 @@ def enrich_satellite_data(df: pd.DataFrame) -> pd.DataFrame:
 
 def compute_positions(df: pd.DataFrame) -> pd.DataFrame:
     logger.info("Computing current satellite positions")
-
     df = df.copy()
 
     latitudes = []
@@ -153,44 +153,37 @@ def compute_positions(df: pd.DataFrame) -> pd.DataFrame:
     xs = []
     ys = []
     zs = []
+    timestamps = []
+    tle_age_hours = []
 
     now = datetime.now(timezone.utc)
-    jd, fr = jday(
-        now.year,
-        now.month,
-        now.day,
-        now.hour,
-        now.minute,
-        now.second + now.microsecond * 1e-6,
-    )
 
     for _, row in df.iterrows():
         try:
-            sat = Satrec.twoline2rv(row["line1"], row["line2"])
-            error_code, position_km, _velocity_km_s = sat.sgp4(jd, fr)
+            propagated = propagate_tle(row["line1"], row["line2"], now)
 
-            if error_code == 0:
-                x_km, y_km, z_km = position_km
-
-                lat_deg = np.degrees(np.arctan2(z_km, np.sqrt(x_km**2 + y_km**2)))
-                lon_deg = np.degrees(np.arctan2(y_km, x_km))
-                altitude_km = np.sqrt(x_km**2 + y_km**2 + z_km**2) - 6371.0
-
-                latitudes.append(float(lat_deg))
-                longitudes.append(float(lon_deg))
-                altitudes.append(float(altitude_km))
-
-                radius_km = 6371.0 + altitude_km
-                xs.append(float(radius_km * np.cos(np.radians(lat_deg)) * np.cos(np.radians(lon_deg))))
-                ys.append(float(radius_km * np.cos(np.radians(lat_deg)) * np.sin(np.radians(lon_deg))))
-                zs.append(float(radius_km * np.sin(np.radians(lat_deg))))
-            else:
+            if propagated is None:
                 latitudes.append(None)
                 longitudes.append(None)
                 altitudes.append(None)
                 xs.append(None)
                 ys.append(None)
                 zs.append(None)
+                timestamps.append(None)
+                tle_age_hours.append(None)
+                continue
+
+            epoch = tle_epoch_utc(row["line1"], row["line2"])
+            age_hours = (now - epoch).total_seconds() / 3600.0
+
+            latitudes.append(propagated["latitude"])
+            longitudes.append(propagated["longitude"])
+            altitudes.append(propagated["altitude_km"])
+            xs.append(propagated["x_km"])
+            ys.append(propagated["y_km"])
+            zs.append(propagated["z_km"])
+            timestamps.append(propagated["timestamp"])
+            tle_age_hours.append(age_hours)
 
         except Exception as e:
             logger.warning("Failed position calculation for %r: %s", row.get("satellite"), e)
@@ -200,18 +193,19 @@ def compute_positions(df: pd.DataFrame) -> pd.DataFrame:
             xs.append(None)
             ys.append(None)
             zs.append(None)
+            timestamps.append(None)
+            tle_age_hours.append(None)
 
     df["latitude"] = latitudes
     df["longitude"] = longitudes
     df["altitude_km"] = altitudes
-    df["x"] = xs
-    df["y"] = ys
-    df["z"] = zs
-    df["position_computed_at"] = now.isoformat()
+    df["x_km"] = xs
+    df["y_km"] = ys
+    df["z_km"] = zs
+    df["position_computed_at"] = timestamps
+    df["tle_age_hours"] = tle_age_hours
 
     return df
-
-
 def process_satellite_data() -> pd.DataFrame:
     logger.info("Starting satellite processing pipeline")
 

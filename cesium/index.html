@@ -265,7 +265,18 @@
             orbitPathEntity = null;
           }
         }
-
+        function flyToEuropeView(duration = 1.8) {
+          viewer.trackedEntity = undefined;
+          viewer.camera.flyTo({
+            destination: Cesium.Cartesian3.fromDegrees(12, 50, 18000000),
+            orientation: {
+              heading: Cesium.Math.toRadians(15),
+              pitch: Cesium.Math.toRadians(-55),
+              roll: 0
+            },
+            duration
+          });
+        }
         function stopSelectedAnimation() {
           if (selectedAnimationTimer) {
             clearInterval(selectedAnimationTimer);
@@ -290,7 +301,7 @@
               toggle.checked || entity.properties?.category?.getValue?.() !== "starlink";
 
             entity.show = isStarlinkVisible;
-            entity.point.pixelSize = 5;
+            entity.point.pixelSize = 4;
             entity.point.color = defaultColorForEntity(entity);
           });
         }
@@ -347,7 +358,7 @@
           updateAnimationButtonState();
 
           viewer.trackedEntity = undefined;
-          viewer.zoomTo(viewer.entities);
+          flyToEuropeView();
         }
 
         function createInterpolatedPositionProperty(initialCartesian) {
@@ -610,7 +621,10 @@
               polyline: {
                 positions: pathPositions,
                 width: 3,
-                material: COLORS.orbit,
+                material: new Cesium.PolylineGlowMaterialProperty({
+                  glowPower: 0.15,
+                  color: COLORS.orbit
+                }),
                 clampToGround: false
               }
             });
@@ -627,10 +641,7 @@
           const data = await fetchAllSatellites();
           data.forEach(addSatellite);
 
-          if (viewer.entities.values.length > 0) {
-            viewer.zoomTo(viewer.entities);
-          }
-
+          flyToEuropeView(0);
           startBulkSatelliteRefresh();
         } catch (err) {
           console.error("Error fetching satellites:", err);
@@ -660,8 +671,7 @@
         });
 
         centerEarthButton.addEventListener("click", () => {
-          viewer.trackedEntity = undefined;
-          viewer.camera.flyHome(1.5);
+          flyToEuropeView(1.5);
         });
 
         centerSelectedButton.addEventListener("click", () => {

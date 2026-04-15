@@ -4,10 +4,10 @@ from datetime import datetime, timedelta, timezone
 
 import numpy as np
 import pandas as pd
-from sgp4.api import Satrec, jday
 from sqlalchemy import create_engine, text
 
 from pipeline.scripts.config import SQLALCHEMY_DATABASE_URI
+from pipeline.scripts.orbital_utils import propagate_tle
 
 logger = logging.getLogger(__name__)
 
@@ -16,35 +16,6 @@ SOURCE_TABLE = "satellites_latest"
 NUM_POINTS = 90
 
 
-def propagate_tle(line1: str, line2: str, when: datetime) -> dict | None:
-    try:
-        satrec = Satrec.twoline2rv(line1, line2)
-
-        jd, fr = jday(
-            when.year,
-            when.month,
-            when.day,
-            when.hour,
-            when.minute,
-            when.second + when.microsecond * 1e-6,
-        )
-
-        error_code, position_km, _velocity_km_s = satrec.sgp4(jd, fr)
-
-        if error_code != 0:
-            return None
-
-        x_km, y_km, z_km = position_km
-
-        return {
-            "timestamp": when.isoformat(),
-            "x_km": float(x_km),
-            "y_km": float(y_km),
-            "z_km": float(z_km),
-        }
-
-    except Exception:
-        return None
 
 
 def generate_orbit_paths(num_points: int = NUM_POINTS) -> None:

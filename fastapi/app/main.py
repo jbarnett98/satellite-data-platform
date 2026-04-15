@@ -6,8 +6,7 @@ import time
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from sgp4.api import Satrec, jday
-from skyfield.api import EarthSatellite, load, wgs84
+from pipeline.scripts.orbital_utils import propagate_tle
 from sqlalchemy import create_engine, text
 
 DATABASE_URL = os.environ.get("SQLALCHEMY_DATABASE_URI")
@@ -19,7 +18,6 @@ if not DATABASE_URL:
     raise ValueError("SQLALCHEMY_DATABASE_URI environment variable is not set")
 
 engine = create_engine(DATABASE_URL)
-ts = load.timescale()
 
 app = FastAPI(title="Satellite API")
 
@@ -36,55 +34,6 @@ SATELLITES_CACHE = {
 }
 SATELLITES_CACHE_TTL_SECONDS = 30
 
-
-def propagate_tle(line1: str, line2: str, when: datetime) -> dict | None:
-    """
-    Canonical propagation function.
-
-    Returns:
-    - Cartesian position directly from SGP4 (x_km, y_km, z_km)
-    - Geodetic position derived for display (latitude, longitude, altitude_km)
-    """
-    try:
-        satrec = Satrec.twoline2rv(line1, line2)
-
-        jd, fr = jday(
-            when.year,
-            when.month,
-            when.day,
-            when.hour,
-            when.minute,
-            when.second + when.microsecond * 1e-6,
-        )
-
-        error_code, position_km, _velocity_km_s = satrec.sgp4(jd, fr)
-
-        if error_code != 0:
-            return None
-
-        x_km, y_km, z_km = position_km
-
-        satellite = EarthSatellite(line1, line2, "SAT", ts)
-        t = ts.from_datetime(when)
-        geocentric = satellite.at(t)
-        subpoint = wgs84.subpoint(geocentric)
-
-        latitude = float(subpoint.latitude.degrees)
-        longitude = float(subpoint.longitude.degrees)
-        altitude_km = float(subpoint.elevation.km)
-
-        return {
-            "timestamp": when.isoformat(),
-            "x_km": float(x_km),
-            "y_km": float(y_km),
-            "z_km": float(z_km),
-            "latitude": latitude,
-            "longitude": longitude,
-            "altitude_km": altitude_km,
-        }
-
-    except Exception:
-        return None
 
 
 @app.get("/health")
@@ -149,6 +98,8 @@ def get_satellites():
             "satellite": record["satellite"],
             "norad_id": record["norad_id"],
             "orbit_type": record["orbit_type"],
+            "latitude": propagated["latitude"],
+            "longitude": propagated["longitude"],
             "altitude_km": propagated["altitude_km"],
             "x_km": propagated["x_km"],
             "y_km": propagated["y_km"],
