@@ -6,7 +6,7 @@ import time
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pipeline.scripts.orbital_utils import propagate_tle
+from app.orbital_utils import propagate_tle
 from sqlalchemy import create_engine, text
 
 DATABASE_URL = os.environ.get("SQLALCHEMY_DATABASE_URI")
