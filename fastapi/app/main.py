@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 import logging
 import time
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from app.orbital_utils import propagate_tle
 from sqlalchemy import create_engine, text
@@ -34,18 +34,39 @@ SATELLITES_CACHE = {
 }
 SATELLITES_CACHE_TTL_SECONDS = 30
 
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start = time.perf_counter()
 
+    try:
+        response = await call_next(request)
+    except Exception:
+        elapsed = time.perf_counter() - start
+        logger.exception(
+            "HTTP %s %s failed in %.3f seconds",
+            request.method,
+            request.url.path,
+            elapsed,
+        )
+        raise
+
+    elapsed = time.perf_counter() - start
+
+    logger.info(
+        "HTTP %s %s -> %s in %.3f seconds",
+        request.method,
+        request.url.path,
+        response.status_code,
+        elapsed,
+    )
+
+    return response
 
 @app.get("/health")
 def health_check():
-    start = time.perf_counter()
+    return {"status": "ok"}
 
-    response = {"status": "ok"}
-
-    elapsed = time.perf_counter() - start
-    logger.info("GET /health completed in %.3f seconds", elapsed)
-
-    return response
+    
 
 
 @app.get("/satellites")
@@ -243,4 +264,120 @@ def get_orbit_path(norad_id: int):
         "orbital_period_minutes": record["orbital_period_minutes"],
         "path_source": "precomputed",
         "points": json.loads(record["points_json"]),
+    }
+
+
+
+
+
+
+@app.get("/satellite-trajectories")
+def get_satellite_trajectories():
+    total_start = time.perf_counter()
+
+    latest_batch_query = text("""
+        SELECT MAX(generated_at) AS latest_generated_at
+        FROM satellite_trajectory_samples
+    """)
+
+    db_start = time.perf_counter()
+    with engine.connect() as connection:
+        latest_batch_row = connection.execute(latest_batch_query).fetchone()
+    db_elapsed = time.perf_counter() - db_start
+
+    latest_generated_at = (
+        latest_batch_row.latest_generated_at
+        if latest_batch_row and latest_batch_row.latest_generated_at is not None
+        else None
+    )
+
+    if latest_generated_at is None:
+        logger.warning("GET /satellite-trajectories returned no rows: no generated batch found")
+        return {
+            "generated_at": None,
+            "window_minutes": None,
+            "step_seconds": None,
+            "satellites": [],
+        }
+
+    query = text("""
+        SELECT
+            norad_id,
+            sample_time,
+            x_km,
+            y_km,
+            z_km,
+            generated_at
+        FROM satellite_trajectory_samples
+        WHERE generated_at = :latest_generated_at
+        ORDER BY norad_id, sample_time
+    """)
+
+    with engine.connect() as connection:
+        results = connection.execute(
+            query,
+            {"latest_generated_at": latest_generated_at},
+        ).fetchall()
+
+    if not results:
+        logger.warning(
+            "GET /satellite-trajectories returned no rows for latest batch %s",
+            latest_generated_at,
+        )
+        return {
+            "generated_at": latest_generated_at.isoformat(),
+            "window_minutes": None,
+            "step_seconds": None,
+            "satellites": [],
+        }
+
+    satellites = []
+    current_norad_id = None
+    current_samples = []
+
+    for row in results:
+        record = dict(row._mapping)
+
+        norad_id = int(record["norad_id"])
+        sample = [
+            record["sample_time"].isoformat(),
+            float(record["x_km"]),
+            float(record["y_km"]),
+            float(record["z_km"]),
+        ]
+
+        if current_norad_id is None:
+            current_norad_id = norad_id
+
+        if norad_id != current_norad_id:
+            satellites.append({
+                "norad_id": current_norad_id,
+                "samples": current_samples,
+            })
+            current_norad_id = norad_id
+            current_samples = []
+
+        current_samples.append(sample)
+
+    if current_norad_id is not None:
+        satellites.append({
+            "norad_id": current_norad_id,
+            "samples": current_samples,
+        })
+
+    total_elapsed = time.perf_counter() - total_start
+    logger.info(
+        "GET /satellite-trajectories completed in %.3f seconds | db=%.3f | satellites=%d | rows=%d | generated_at=%s",
+        total_elapsed,
+        db_elapsed,
+        len(satellites),
+        len(results),
+        latest_generated_at.isoformat(),
+    )
+
+    return {
+        "generated_at": latest_generated_at.isoformat(),
+        "window_minutes": 10,
+        "step_seconds": 30,
+        "satellites": satellites,
     }

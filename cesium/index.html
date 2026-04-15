@@ -115,6 +115,40 @@
     .value {
       color: #e2e8f0;
     }
+
+    #loadingOverlay {
+      position: absolute;
+      inset: 0;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(2, 6, 23, 0.72);
+      backdrop-filter: blur(8px);
+    }
+
+    #loadingCard {
+      min-width: 280px;
+      max-width: 420px;
+      padding: 18px 20px;
+      border-radius: 16px;
+      background: rgba(15, 23, 42, 0.9);
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+      color: #e2e8f0;
+    }
+
+    #loadingTitle {
+      font-size: 16px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      color: #f8fafc;
+    }
+
+    #loadingStatus {
+      font-size: 13px;
+      color: #cbd5e1;
+    }
   </style>
 </head>
 
@@ -140,19 +174,25 @@
     </div>
   </div>
 
+  <div id="loadingOverlay">
+    <div id="loadingCard">
+      <div id="loadingTitle">Loading satellite data…</div>
+      <div id="loadingStatus">Starting up</div>
+    </div>
+  </div>
+
   <div id="cesiumContainer"></div>
 
   <script>
     Cesium.Ion.defaultAccessToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJjZTc2ZDhlMS1kOGMyLTRlODYtODkzMi0xMTY4ODQ5MDQ3YjgiLCJpZCI6NDE1MjI4LCJpYXQiOjE3NzU5ODEzMDV9.g4q42Fnd8K8dYHEJPzyP9hCZZaPzDHkrL7wgKX5OE0s";
 
     const API_BASE_URL = "https://sa-b3a4209248f442df867133e8e8fa983e.ecs.eu-west-2.on.aws";
-    const SATELLITE_REFRESH_MS = 5000;
-    const INTERPOLATION_DURATION_MS = 6000;
+    const TRAJECTORY_REFRESH_MS = 3 * 60 * 1000;
     const HOVER_PICK_WIDTH = 12;
     const HOVER_PICK_HEIGHT = 12;
 
     async function initCesium() {
-    try {
+      try {
         const terrainProvider = await Cesium.createWorldTerrainAsync();
 
         const viewer = new Cesium.Viewer("cesiumContainer", {
@@ -208,6 +248,8 @@
         const toggleAnimationButton = document.getElementById("toggleAnimationButton");
         const centerEarthButton = document.getElementById("centerEarthButton");
         const centerSelectedButton = document.getElementById("centerSelectedButton");
+        const loadingOverlay = document.getElementById("loadingOverlay");
+        const loadingStatus = document.getElementById("loadingStatus");
 
         const satelliteEntities = [];
         const satelliteEntityMap = new Map();
@@ -217,20 +259,29 @@
         let selectedSatelliteEntity = null;
         let animatedSatelliteEntity = null;
         let selectedAnimationTimer = null;
-        let bulkRefreshTimer = null;
         let currentOrbitPathData = [];
         let animationPaused = false;
 
         const COLORS = {
           normal: Cesium.Color.fromCssColorString("#F8FAFC").withAlpha(0.96),
           starlink: Cesium.Color.fromCssColorString("#E0F2FE").withAlpha(1.0),
-          dimNormal: Cesium.Color.fromCssColorString("#F8FAFC").withAlpha(0.14),
-          dimStarlink: Cesium.Color.fromCssColorString("#E0F2FE").withAlpha(0.18),
           hoverOutline: Cesium.Color.fromCssColorString("#FFFFFF").withAlpha(1.0),
           selected: Cesium.Color.fromCssColorString("#67E8F9"),
           orbit: Cesium.Color.fromCssColorString("#22D3EE").withAlpha(1.0),
           animated: Cesium.Color.fromCssColorString("#FFFFFF")
         };
+
+        function setLoadingStatus(message) {
+          if (loadingStatus) {
+            loadingStatus.textContent = message;
+          }
+        }
+
+        function hideLoadingOverlay() {
+          if (loadingOverlay) {
+            loadingOverlay.style.display = "none";
+          }
+        }
 
         function kmToCartesian(point) {
           return new Cesium.Cartesian3(
@@ -240,18 +291,9 @@
           );
         }
 
-        function cloneCartesian(cartesian) {
-          return new Cesium.Cartesian3(cartesian.x, cartesian.y, cartesian.z);
-        }
-
         function defaultColorForEntity(entity) {
           const category = entity.properties?.category?.getValue?.();
           return category === "starlink" ? COLORS.starlink : COLORS.normal;
-        }
-
-        function dimColorForEntity(entity) {
-          const category = entity.properties?.category?.getValue?.();
-          return category === "starlink" ? COLORS.dimStarlink : COLORS.dimNormal;
         }
 
         function updateInfoPanelDefault() {
@@ -348,12 +390,7 @@
             return;
           }
 
-          if (selectedSatelliteEntity) {
-            applyDimStyle(hoveredSatelliteEntity);
-          } else {
-            applyDefaultStyle(hoveredSatelliteEntity);
-          }
-
+          applyDefaultStyle(hoveredSatelliteEntity);
           hoveredSatelliteEntity = null;
         }
 
@@ -380,7 +417,6 @@
           selectedSatelliteEntity = null;
         }
 
-      
         function updateAnimationButtonState() {
           if (animationPaused) {
             toggleAnimationButton.textContent = "Resume Animation";
@@ -401,63 +437,10 @@
 
           animationPaused = false;
           updateAnimationButtonState();
+          viewer.clock.shouldAnimate = true;
 
           viewer.trackedEntity = undefined;
           flyToEuropeView();
-        }
-
-        function createInterpolatedPositionProperty(initialCartesian) {
-          const property = new Cesium.CallbackPositionProperty(() => {
-            const now = Date.now();
-            const state = property._state;
-
-            if (!state) {
-              return initialCartesian;
-            }
-
-            if (!state.target) {
-              return state.current;
-            }
-
-            const duration = Math.max(state.durationMs || 1, 1);
-            const t = Math.min((now - state.startTimeMs) / duration, 1);
-
-            const interpolated = new Cesium.Cartesian3();
-            Cesium.Cartesian3.lerp(state.start, state.target, t, interpolated);
-
-            state.current = cloneCartesian(interpolated);
-
-            if (t >= 1) {
-              state.start = cloneCartesian(state.target);
-              state.current = cloneCartesian(state.target);
-              state.target = null;
-            }
-
-            return interpolated;
-          }, false);
-
-          property._state = {
-            start: cloneCartesian(initialCartesian),
-            current: cloneCartesian(initialCartesian),
-            target: null,
-            startTimeMs: Date.now(),
-            durationMs: INTERPOLATION_DURATION_MS
-          };
-
-          return property;
-        }
-
-        function setEntityTargetPosition(entity, cartesian, durationMs = INTERPOLATION_DURATION_MS) {
-          const state = entity.position?._state;
-          if (!state) {
-            entity.position = createInterpolatedPositionProperty(cartesian);
-            return;
-          }
-
-          state.start = cloneCartesian(state.current || cartesian);
-          state.target = cloneCartesian(cartesian);
-          state.startTimeMs = Date.now();
-          state.durationMs = durationMs;
         }
 
         function addSatellite(sat) {
@@ -485,12 +468,16 @@
 
           const entity = viewer.entities.add({
             name: sat.satellite,
-            position: createInterpolatedPositionProperty(initialPosition),
+            position: initialPosition,
             point: {
-              pixelSize: 3,
+              pixelSize: 2,
               color: isStarlink ? COLORS.starlink : COLORS.normal,
               outlineColor: Cesium.Color.WHITE.withAlpha(0.18),
-              outlineWidth: 1
+              outlineWidth: 1,
+              scaleByDistance: new Cesium.NearFarScalar(
+                2_000_000.0, 1.8,
+                30_000_000.0, 0.7
+              )
             },
             properties: {
               satellite: sat.satellite ?? null,
@@ -505,37 +492,6 @@
           satelliteEntityMap.set(Number(sat.norad_id), entity);
         }
 
-        function updateExistingSatellites(satellites) {
-          satellites.forEach((sat) => {
-            if (
-              sat == null ||
-              sat.norad_id == null ||
-              sat.x_km == null ||
-              sat.y_km == null ||
-              sat.z_km == null
-            ) {
-              return;
-            }
-
-            const entity = satelliteEntityMap.get(Number(sat.norad_id));
-            if (!entity) {
-              addSatellite(sat);
-              return;
-            }
-
-            const cartesian = kmToCartesian(sat);
-            setEntityTargetPosition(entity, cartesian);
-
-            if (entity.properties?.altitude_km) {
-              entity.properties.altitude_km = sat.altitude_km ?? null;
-            }
-
-            if (entity.properties?.orbit_type) {
-              entity.properties.orbit_type = sat.orbit_type ?? null;
-            }
-          });
-        }
-
         async function fetchAllSatellites() {
           const response = await fetch(`${API_BASE_URL}/satellites`);
 
@@ -546,25 +502,71 @@
           return await response.json();
         }
 
-        async function refreshSatellitePositions() {
-          try {
-            const data = await fetchAllSatellites();
-            updateExistingSatellites(data);
-          } catch (err) {
-            console.error("Error refreshing satellites:", err);
-          }
-        }
+        async function fetchSatelliteTrajectories() {
+          const response = await fetch(`${API_BASE_URL}/satellite-trajectories`);
 
-        function startBulkSatelliteRefresh() {
-          if (bulkRefreshTimer) {
-            clearInterval(bulkRefreshTimer);
+          if (!response.ok) {
+            throw new Error(`Trajectory request failed with status ${response.status}`);
           }
 
-          bulkRefreshTimer = setInterval(() => {
-            refreshSatellitePositions();
-          }, SATELLITE_REFRESH_MS);
+          return await response.json();
         }
 
+        function buildSampledPosition(samples) {
+          const property = new Cesium.SampledPositionProperty();
+
+          for (const [timestamp, x_km, y_km, z_km] of samples) {
+            const time = Cesium.JulianDate.fromDate(new Date(timestamp));
+            const position = new Cesium.Cartesian3(
+              Number(x_km) * 1000,
+              Number(y_km) * 1000,
+              Number(z_km) * 1000
+            );
+
+            property.addSample(time, position);
+          }
+
+          property.setInterpolationOptions({
+            interpolationDegree: 1,
+            interpolationAlgorithm: Cesium.LinearApproximation
+          });
+
+          return property;
+        }
+
+        function applyTrajectoryData(payload) {
+          if (!payload || !payload.satellites) {
+            return;
+          }
+
+          for (const sat of payload.satellites) {
+            const entity = satelliteEntityMap.get(Number(sat.norad_id));
+            if (!entity || !sat.samples || sat.samples.length === 0) {
+              continue;
+            }
+
+            entity.position = buildSampledPosition(sat.samples);
+          }
+
+          if (payload.generated_at) {
+            viewer.clock.currentTime = Cesium.JulianDate.fromDate(new Date(payload.generated_at));
+          }
+
+          viewer.clock.shouldAnimate = !animationPaused;
+          viewer.clock.multiplier = 1;
+        }
+
+        function startTrajectoryRefresh() {
+          setInterval(async () => {
+            try {
+              const trajectoryPayload = await fetchSatelliteTrajectories();
+              applyTrajectoryData(trajectoryPayload);
+              console.log("Trajectory refresh complete");
+            } catch (err) {
+              console.error("Error refreshing trajectories:", err);
+            }
+          }, TRAJECTORY_REFRESH_MS);
+        }
 
         function getClosestPointToNow(pathPoints) {
           const now = Date.now();
@@ -685,13 +687,20 @@
         }
 
         try {
-          const data = await fetchAllSatellites();
-          data.forEach(addSatellite);
+          setLoadingStatus("Loading current satellite catalog...");
+          const satelliteData = await fetchAllSatellites();
+          satelliteData.forEach(addSatellite);
+
+          setLoadingStatus("Loading trajectory samples...");
+          const trajectoryPayload = await fetchSatelliteTrajectories();
+          applyTrajectoryData(trajectoryPayload);
 
           flyToEuropeView(0);
-          startBulkSatelliteRefresh();
+          startTrajectoryRefresh();
+          hideLoadingOverlay();
         } catch (err) {
-          console.error("Error fetching satellites:", err);
+          console.error("Error loading satellites:", err);
+          setLoadingStatus(`Failed to load data: ${err.message}`);
         }
 
         toggle.addEventListener("change", () => {
@@ -699,8 +708,14 @@
 
           if (selectedSatelliteEntity) {
             applySelectedStyle(selectedSatelliteEntity);
-          } else {
-            restoreAllSatellitesAppearance();
+            selectedSatelliteEntity.show =
+              toggle.checked || selectedSatelliteEntity.properties?.category?.getValue?.() !== "starlink";
+          }
+
+          restoreAllSatellitesAppearance();
+
+          if (selectedSatelliteEntity) {
+            applySelectedStyle(selectedSatelliteEntity);
           }
         });
 
@@ -711,6 +726,8 @@
         toggleAnimationButton.addEventListener("click", () => {
           animationPaused = !animationPaused;
           updateAnimationButtonState();
+
+          viewer.clock.shouldAnimate = !animationPaused;
 
           if (animationPaused) {
             stopSelectedAnimation();
@@ -762,7 +779,6 @@
 
         handler.setInputAction(async function (click) {
           const hoveredEntity = hoveredSatelliteEntity;
-
           let entity = hoveredEntity;
 
           if (!entity) {

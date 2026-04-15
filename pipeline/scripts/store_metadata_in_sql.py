@@ -1,4 +1,6 @@
 import logging
+from datetime import datetime, timezone
+
 import pandas as pd
 from sqlalchemy import create_engine
 
@@ -42,7 +44,6 @@ def store_metadata_to_sql() -> None:
 
     df = df.rename(columns=rename_map)
 
-    # Keep only fields we care about for now
     keep_columns = [
         "norad_id",
         "object_name",
@@ -64,9 +65,29 @@ def store_metadata_to_sql() -> None:
 
     df = df[[c for c in keep_columns if c in df.columns]]
 
+    if "norad_id" not in df.columns:
+        raise ValueError("Metadata is missing norad_id after renaming.")
+
+    # Clean key column
+    df = df[df["norad_id"].notna()].copy()
+    df["norad_id"] = pd.to_numeric(df["norad_id"], errors="coerce")
+    df = df[df["norad_id"].notna()].copy()
+    df["norad_id"] = df["norad_id"].astype("int64")
+
+    # Remove duplicates if source contains repeated NORAD IDs
+    df = df.drop_duplicates(subset=["norad_id"], keep="last").copy()
+
+    # Stamp when this metadata snapshot was loaded
+    fetched_at = datetime.now(timezone.utc)
+    df["fetched_at"] = fetched_at
+
     engine = create_engine(SQLALCHEMY_DATABASE_URI)
 
-    logger.info("Writing %d rows to PostgreSQL table: %s", len(df), TABLE_NAME)
+    logger.info(
+        "Writing %d metadata rows to PostgreSQL table: %s",
+        len(df),
+        TABLE_NAME,
+    )
 
     df.to_sql(
         TABLE_NAME,
