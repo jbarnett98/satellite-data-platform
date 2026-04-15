@@ -143,11 +143,14 @@
   <div id="cesiumContainer"></div>
 
   <script>
-    Cesium.Ion.defaultAccessToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJjZTc2ZDhlMS1kOGMyLTRlODYtODkzMi0xMTY4ODQ5MDQ3YjgiLCJpZCI6NDE1MjI4LCJpYXQiOjE3NzU5ODEzMDV9.g4q42Fnd8K8dYHEJPzyP9hCZZaPzDHkrL7wgKX5OE0s";
+    Cesium.Ion.defaultAccessToken = "YOUR_CESIUM_ION_TOKEN_HERE";
 
     const API_BASE_URL = "https://sa-b3a4209248f442df867133e8e8fa983e.ecs.eu-west-2.on.aws";
     const SATELLITE_REFRESH_MS = 15000;
     const INTERPOLATION_DURATION_MS = 12000;
+    const TWINKLE_INTERVAL_MS = 140;
+    const HOVER_PICK_WIDTH = 12;
+    const HOVER_PICK_HEIGHT = 12;
 
     async function initCesium() {
       try {
@@ -170,14 +173,25 @@
 
         viewer.scene.globe.translucency.enabled = false;
         viewer.scene.globe.enableLighting = true;
-        viewer.scene.globe.dynamicAtmosphereLighting = false;
-        viewer.scene.globe.showGroundAtmosphere = false;
+        viewer.scene.globe.dynamicAtmosphereLighting = true;
+        viewer.scene.globe.showGroundAtmosphere = true;
         viewer.scene.globe.depthTestAgainstTerrain = false;
-        viewer.scene.backgroundColor = Cesium.Color.fromCssColorString("#020617");
+        viewer.scene.backgroundColor = Cesium.Color.BLACK;
         viewer.scene.sun.show = true;
-        viewer.scene.globe.enableLighting = true;
-        viewer.scene.skyAtmosphere.show = true;
         viewer.scene.moon.show = false;
+        viewer.scene.skyAtmosphere.show = true;
+
+        // Uncomment when your skybox files are ready
+        // viewer.scene.skyBox = new Cesium.SkyBox({
+        //   sources: {
+        //     positiveX: "./skybox/px.jpg",
+        //     negativeX: "./skybox/nx.jpg",
+        //     positiveY: "./skybox/py.jpg",
+        //     negativeY: "./skybox/ny.jpg",
+        //     positiveZ: "./skybox/pz.jpg",
+        //     negativeZ: "./skybox/nz.jpg"
+        //   }
+        // });
 
         viewer.imageryLayers.removeAll();
 
@@ -200,18 +214,21 @@
         const satelliteEntityMap = new Map();
 
         let orbitPathEntity = null;
+        let hoveredSatelliteEntity = null;
         let selectedSatelliteEntity = null;
         let animatedSatelliteEntity = null;
         let selectedAnimationTimer = null;
+        let bulkRefreshTimer = null;
+        let twinkleTimer = null;
         let currentOrbitPathData = [];
         let animationPaused = false;
-        let bulkRefreshTimer = null;
 
         const COLORS = {
-          normal: Cesium.Color.fromCssColorString("#B8C7D9").withAlpha(0.8),
-          starlink: Cesium.Color.fromCssColorString("#7DD3FC").withAlpha(0.9),
-          dimNormal: Cesium.Color.fromCssColorString("#B8C7D9").withAlpha(0.14),
-          dimStarlink: Cesium.Color.fromCssColorString("#7DD3FC").withAlpha(0.18),
+          normal: Cesium.Color.fromCssColorString("#F8FAFC").withAlpha(0.96),
+          starlink: Cesium.Color.fromCssColorString("#E0F2FE").withAlpha(1.0),
+          dimNormal: Cesium.Color.fromCssColorString("#F8FAFC").withAlpha(0.14),
+          dimStarlink: Cesium.Color.fromCssColorString("#E0F2FE").withAlpha(0.18),
+          hoverOutline: Cesium.Color.fromCssColorString("#FFFFFF").withAlpha(1.0),
           selected: Cesium.Color.fromCssColorString("#67E8F9"),
           orbit: Cesium.Color.fromCssColorString("#22D3EE").withAlpha(1.0),
           animated: Cesium.Color.fromCssColorString("#FFFFFF")
@@ -263,19 +280,21 @@
           `;
         }
 
+        function flyToEuropeView(duration = 1.8) {
+          viewer.trackedEntity = undefined;
+          viewer.camera.flyTo({
+            destination: Cesium.Rectangle.fromDegrees(-25, -30, 55, 60),
+            duration
+          });
+        }
+
         function clearOrbitPath() {
           if (orbitPathEntity) {
             viewer.entities.remove(orbitPathEntity);
             orbitPathEntity = null;
           }
         }
-        function flyToEuropeView(duration = 1.8) {
-          viewer.trackedEntity = undefined;
-          viewer.camera.flyTo({
-            destination: Cesium.Rectangle.fromDegrees(-30, -35, 60, 65),
-            duration
-          });
-        }
+
         function stopSelectedAnimation() {
           if (selectedAnimationTimer) {
             clearInterval(selectedAnimationTimer);
@@ -294,15 +313,71 @@
           currentOrbitPathData = [];
         }
 
+        function applyDefaultStyle(entity) {
+          entity.point.pixelSize = 3;
+          entity.point.color = defaultColorForEntity(entity);
+          entity.point.outlineColor = Cesium.Color.WHITE.withAlpha(0.18);
+          entity.point.outlineWidth = 1;
+        }
+
+        function applyDimStyle(entity) {
+          entity.point.pixelSize = 3;
+          entity.point.color = dimColorForEntity(entity);
+          entity.point.outlineColor = Cesium.Color.WHITE.withAlpha(0.05);
+          entity.point.outlineWidth = 1;
+        }
+
+        function applyHoverStyle(entity) {
+          entity.point.pixelSize = 4;
+          entity.point.color = defaultColorForEntity(entity);
+          entity.point.outlineColor = COLORS.hoverOutline;
+          entity.point.outlineWidth = 3;
+        }
+
+        function applySelectedStyle(entity) {
+          entity.point.pixelSize = 5;
+          entity.point.color = COLORS.selected;
+          entity.point.outlineColor = Cesium.Color.WHITE;
+          entity.point.outlineWidth = 3;
+        }
+
         function restoreAllSatellitesAppearance() {
           satelliteEntities.forEach((entity) => {
             const isStarlinkVisible =
               toggle.checked || entity.properties?.category?.getValue?.() !== "starlink";
 
             entity.show = isStarlinkVisible;
-            entity.point.pixelSize = 4;
-            entity.point.color = defaultColorForEntity(entity);
+            applyDefaultStyle(entity);
           });
+        }
+
+        function clearHoverState() {
+          if (!hoveredSatelliteEntity || hoveredSatelliteEntity === selectedSatelliteEntity) {
+            hoveredSatelliteEntity = null;
+            return;
+          }
+
+          if (selectedSatelliteEntity) {
+            applyDimStyle(hoveredSatelliteEntity);
+          } else {
+            applyDefaultStyle(hoveredSatelliteEntity);
+          }
+
+          hoveredSatelliteEntity = null;
+        }
+
+        function setHoverState(entity) {
+          if (!entity || entity === selectedSatelliteEntity) {
+            return;
+          }
+
+          if (hoveredSatelliteEntity === entity) {
+            return;
+          }
+
+          clearHoverState();
+          hoveredSatelliteEntity = entity;
+          applyHoverStyle(entity);
         }
 
         function resetPreviousSelection() {
@@ -310,8 +385,7 @@
             return;
           }
 
-          selectedSatelliteEntity.point.pixelSize = 5;
-          selectedSatelliteEntity.point.color = defaultColorForEntity(selectedSatelliteEntity);
+          applyDefaultStyle(selectedSatelliteEntity);
           selectedSatelliteEntity = null;
         }
 
@@ -321,7 +395,7 @@
             const isStarlink = entity.properties?.category?.getValue?.() === "starlink";
 
             if (isSelected) {
-              entity.show = false;
+              entity.show = true;
               return;
             }
 
@@ -331,8 +405,7 @@
             }
 
             entity.show = true;
-            entity.point.pixelSize = 4;
-            entity.point.color = dimColorForEntity(entity);
+            applyDimStyle(entity);
           });
         }
 
@@ -349,6 +422,7 @@
         function resetView() {
           clearOrbitPath();
           removeAnimatedSatellite();
+          clearHoverState();
           resetPreviousSelection();
           restoreAllSatellitesAppearance();
           updateInfoPanelDefault();
@@ -441,9 +515,9 @@
             name: sat.satellite,
             position: createInterpolatedPositionProperty(initialPosition),
             point: {
-              pixelSize: 5,
+              pixelSize: 3,
               color: isStarlink ? COLORS.starlink : COLORS.normal,
-              outlineColor: Cesium.Color.BLACK.withAlpha(0.4),
+              outlineColor: Cesium.Color.WHITE.withAlpha(0.18),
               outlineWidth: 1
             },
             properties: {
@@ -483,6 +557,7 @@
             if (entity.properties?.altitude_km) {
               entity.properties.altitude_km = sat.altitude_km ?? null;
             }
+
             if (entity.properties?.orbit_type) {
               entity.properties.orbit_type = sat.orbit_type ?? null;
             }
@@ -516,6 +591,33 @@
           bulkRefreshTimer = setInterval(() => {
             refreshSatellitePositions();
           }, SATELLITE_REFRESH_MS);
+        }
+
+        function startTwinkleEffect() {
+          if (twinkleTimer) {
+            clearInterval(twinkleTimer);
+          }
+
+          twinkleTimer = setInterval(() => {
+            const t = Date.now() / 500;
+
+            satelliteEntities.forEach((entity, index) => {
+              if (!entity.show) return;
+              if (entity === selectedSatelliteEntity) return;
+              if (entity === hoveredSatelliteEntity) return;
+              if (selectedSatelliteEntity && entity !== selectedSatelliteEntity) return;
+
+              const base = defaultColorForEntity(entity);
+              const alphaPulse = 0.82 + (Math.sin(t + index * 0.35) * 0.14);
+
+              entity.point.color = new Cesium.Color(
+                base.red,
+                base.green,
+                base.blue,
+                alphaPulse
+              );
+            });
+          }, TWINKLE_INTERVAL_MS);
         }
 
         function getClosestPointToNow(pathPoints) {
@@ -642,13 +744,17 @@
 
           flyToEuropeView(0);
           startBulkSatelliteRefresh();
+          startTwinkleEffect();
         } catch (err) {
           console.error("Error fetching satellites:", err);
         }
 
         toggle.addEventListener("change", () => {
+          clearHoverState();
+
           if (selectedSatelliteEntity) {
             dimNonSelectedSatellites(selectedSatelliteEntity);
+            applySelectedStyle(selectedSatelliteEntity);
           } else {
             restoreAllSatellitesAppearance();
           }
@@ -686,14 +792,49 @@
         });
 
         const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
-        handler.setInputAction(async function (click) {
-          const pickedObject = viewer.scene.pick(click.position);
+
+        handler.setInputAction(function (movement) {
+          const pickedObject = viewer.scene.pick(
+            movement.endPosition,
+            HOVER_PICK_WIDTH,
+            HOVER_PICK_HEIGHT
+          );
 
           if (!Cesium.defined(pickedObject) || !pickedObject.id) {
+            clearHoverState();
             return;
           }
 
           const entity = pickedObject.id;
+          const props = entity.properties;
+
+          if (!props || !props.norad_id) {
+            clearHoverState();
+            return;
+          }
+
+          setHoverState(entity);
+        }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
+
+        handler.setInputAction(async function (click) {
+          const hoveredEntity = hoveredSatelliteEntity;
+
+          let entity = hoveredEntity;
+
+          if (!entity) {
+            const pickedObject = viewer.scene.pick(
+              click.position,
+              HOVER_PICK_WIDTH,
+              HOVER_PICK_HEIGHT
+            );
+
+            if (!Cesium.defined(pickedObject) || !pickedObject.id) {
+              return;
+            }
+
+            entity = pickedObject.id;
+          }
+
           const props = entity.properties;
 
           if (!props || !props.norad_id) {
@@ -709,10 +850,12 @@
 
           clearOrbitPath();
           removeAnimatedSatellite();
+          clearHoverState();
           resetPreviousSelection();
 
           selectedSatelliteEntity = entity;
           dimNonSelectedSatellites(entity);
+          applySelectedStyle(entity);
 
           try {
             const detailedSat = await fetchSatelliteDetails(sat.norad_id);
