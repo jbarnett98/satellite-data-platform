@@ -186,8 +186,11 @@
   <script>
     Cesium.Ion.defaultAccessToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJjZTc2ZDhlMS1kOGMyLTRlODYtODkzMi0xMTY4ODQ5MDQ3YjgiLCJpZCI6NDE1MjI4LCJpYXQiOjE3NzU5ODEzMDV9.g4q42Fnd8K8dYHEJPzyP9hCZZaPzDHkrL7wgKX5OE0s";
 
-    const API_BASE_URL = "https://sa-b3a4209248f442df867133e8e8fa983e.ecs.eu-west-2.on.aws";
-    const TRAJECTORY_REFRESH_MS = 3 * 60 * 1000;
+    // const API_BASE_URL = "https://sa-b3a4209248f442df867133e8e8fa983e.ecs.eu-west-2.on.aws";
+    const API_BASE_URL = "http://127.0.0.1:8000";
+    const TRAJECTORY_REFRESH_MS = 15 * 60 * 1000;
+    const TRAJECTORY_WINDOW_MINUTES = 30;
+    const TRAJECTORY_STRIDE = 1;
     const HOVER_PICK_WIDTH = 12;
     const HOVER_PICK_HEIGHT = 12;
 
@@ -263,10 +266,10 @@
         let animationPaused = false;
 
         const COLORS = {
-          normal: Cesium.Color.fromCssColorString("#F8FAFC").withAlpha(0.96),
-          starlink: Cesium.Color.fromCssColorString("#E0F2FE").withAlpha(1.0),
-          hoverOutline: Cesium.Color.fromCssColorString("#FFFFFF").withAlpha(1.0),
-          selected: Cesium.Color.fromCssColorString("#67E8F9"),
+          normal: Cesium.Color.fromCssColorString("#7DD3FC").withAlpha(0.95),
+          starlink: Cesium.Color.fromCssColorString("#67E8F9").withAlpha(1.0),
+          hoverOutline: Cesium.Color.fromCssColorString("#BBF7D0").withAlpha(1.0),
+          selected: Cesium.Color.fromCssColorString("#86EFAC"),
           orbit: Cesium.Color.fromCssColorString("#22D3EE").withAlpha(1.0),
           animated: Cesium.Color.fromCssColorString("#FFFFFF")
         };
@@ -356,7 +359,7 @@
         function applyDefaultStyle(entity) {
           entity.point.pixelSize = 2;
           entity.point.color = defaultColorForEntity(entity);
-          entity.point.outlineColor = Cesium.Color.WHITE.withAlpha(0.18);
+          entity.point.outlineColor = Cesium.Color.BLACK.withAlpha(0.35);
           entity.point.outlineWidth = 1;
         }
 
@@ -503,7 +506,9 @@
         }
 
         async function fetchSatelliteTrajectories() {
-          const response = await fetch(`${API_BASE_URL}/satellite-trajectories`);
+          const response = await fetch(
+            `${API_BASE_URL}/satellite-trajectories?window_minutes=${TRAJECTORY_WINDOW_MINUTES}&stride=${TRAJECTORY_STRIDE}`
+          );
 
           if (!response.ok) {
             throw new Error(`Trajectory request failed with status ${response.status}`);
@@ -512,11 +517,16 @@
           return await response.json();
         }
 
-        function buildSampledPosition(samples) {
+        function buildSampledPosition(samples, generatedAt, stepSeconds, stride = 1) {
           const property = new Cesium.SampledPositionProperty();
+          const baseTime = new Date(generatedAt);
+          const effectiveStepSeconds = stepSeconds * stride;
 
-          for (const [timestamp, x_km, y_km, z_km] of samples) {
-            const time = Cesium.JulianDate.fromDate(new Date(timestamp));
+          for (let i = 0; i < samples.length; i++) {
+            const [x_km, y_km, z_km] = samples[i];
+            const sampleDate = new Date(baseTime.getTime() + i * effectiveStepSeconds * 1000);
+
+            const time = Cesium.JulianDate.fromDate(sampleDate);
             const position = new Cesium.Cartesian3(
               Number(x_km) * 1000,
               Number(y_km) * 1000,
@@ -534,10 +544,13 @@
           return property;
         }
 
+
         function applyTrajectoryData(payload) {
           if (!payload || !payload.satellites) {
             return;
           }
+
+          const stride = payload.stride || 1;
 
           for (const sat of payload.satellites) {
             const entity = satelliteEntityMap.get(Number(sat.norad_id));
@@ -545,7 +558,12 @@
               continue;
             }
 
-            entity.position = buildSampledPosition(sat.samples);
+            entity.position = buildSampledPosition(
+              sat.samples,
+              payload.generated_at,
+              payload.step_seconds,
+              stride
+            );
           }
 
           if (payload.generated_at) {
@@ -555,7 +573,6 @@
           viewer.clock.shouldAnimate = !animationPaused;
           viewer.clock.multiplier = 1;
         }
-
         function startTrajectoryRefresh() {
           setInterval(async () => {
             try {

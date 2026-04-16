@@ -11,13 +11,13 @@ logger = logging.getLogger(__name__)
 
 TABLE_NAME = "satellite_trajectory_samples"
 SOURCE_TABLE = "satellites_latest"
-WINDOW_MINUTES = 10
-STEP_SECONDS = 30
+WINDOW_MINUTES = 180
+NUM_POINTS = 90
 
 
 def generate_trajectory_samples(
     window_minutes: int = WINDOW_MINUTES,
-    step_seconds: int = STEP_SECONDS,
+    num_points: int = NUM_POINTS,
 ) -> None:
     logger.info("Connecting to database")
     engine = create_engine(SQLALCHEMY_DATABASE_URI)
@@ -36,21 +36,23 @@ def generate_trajectory_samples(
         rows = connection.execute(query).fetchall()
 
     start_time = datetime.now(timezone.utc)
-    total_steps = int((window_minutes * 60) / step_seconds)
+    window_seconds = window_minutes * 60
+    step_seconds = window_seconds / (num_points - 1)
     total_satellites = len(rows)
-    expected_total_samples = total_satellites * (total_steps + 1)
+    expected_total_samples = total_satellites * num_points
     output_rows = []
 
     logger.info(
-        "Generating trajectory samples for %d satellites | window_minutes=%d | step_seconds=%d",
+        "Generating trajectory samples for %d satellites | window_minutes=%d | num_points=%d | step_seconds=%.2f",
         total_satellites,
         window_minutes,
+        num_points,
         step_seconds,
     )
     logger.info(
         "Expected sample calculations: %d satellites × %d samples each = %d total samples",
         total_satellites,
-        total_steps + 1,
+        num_points,
         expected_total_samples,
     )
 
@@ -58,7 +60,7 @@ def generate_trajectory_samples(
         if sat_index == 1 or sat_index % 100 == 0:
             elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
             rate = sat_index / elapsed if elapsed > 0 else 0
-            samples_done_estimate = sat_index * (total_steps + 1)
+            samples_done_estimate = sat_index * num_points
 
             logger.info(
                 "Trajectory progress: %d/%d satellites | est_samples=%d/%d | %.2f sat/sec | rows_so_far=%d",
@@ -84,8 +86,9 @@ def generate_trajectory_samples(
         except Exception:
             source_tle_epoch = None
 
-        for i in range(total_steps + 1):
-            sample_time = start_time + timedelta(seconds=i * step_seconds)
+        for i in range(num_points):
+            offset_seconds = i * step_seconds
+            sample_time = start_time + timedelta(seconds=offset_seconds)
             propagated = propagate_tle(line1, line2, sample_time)
 
             if propagated is None:

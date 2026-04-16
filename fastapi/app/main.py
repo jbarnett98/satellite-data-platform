@@ -8,6 +8,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from app.orbital_utils import propagate_tle
 from sqlalchemy import create_engine, text
+from fastapi.middleware.gzip import GZipMiddleware
 
 DATABASE_URL = os.environ.get("SQLALCHEMY_DATABASE_URI")
 
@@ -20,6 +21,8 @@ if not DATABASE_URL:
 engine = create_engine(DATABASE_URL)
 
 app = FastAPI(title="Satellite API")
+
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 app.add_middleware(
     CORSMiddleware,
@@ -271,9 +274,17 @@ def get_orbit_path(norad_id: int):
 
 
 
+from datetime import timedelta
+
 @app.get("/satellite-trajectories")
-def get_satellite_trajectories():
+def get_satellite_trajectories(window_minutes: int = 60, stride: int = 1):
     total_start = time.perf_counter()
+
+    if window_minutes <= 0:
+        raise HTTPException(status_code=400, detail="window_minutes must be > 0")
+
+    if stride <= 0:
+        raise HTTPException(status_code=400, detail="stride must be > 0")
 
     latest_batch_query = text("""
         SELECT MAX(generated_at) AS latest_generated_at
@@ -296,38 +307,65 @@ def get_satellite_trajectories():
         return {
             "generated_at": None,
             "window_minutes": None,
+            "num_points": None,
             "step_seconds": None,
+            "stride": stride,
             "satellites": [],
         }
 
+    window_end = latest_generated_at + timedelta(minutes=window_minutes)
+
     query = text("""
+        WITH ranked_samples AS (
+            SELECT
+                norad_id,
+                sample_time,
+                x_km,
+                y_km,
+                z_km,
+                generated_at,
+                ROW_NUMBER() OVER (
+                    PARTITION BY norad_id
+                    ORDER BY sample_time
+                ) - 1 AS sample_index
+            FROM satellite_trajectory_samples
+            WHERE generated_at = :latest_generated_at
+              AND sample_time <= :window_end
+        )
         SELECT
             norad_id,
-            sample_time,
             x_km,
             y_km,
             z_km,
-            generated_at
-        FROM satellite_trajectory_samples
-        WHERE generated_at = :latest_generated_at
-        ORDER BY norad_id, sample_time
+            generated_at,
+            sample_index
+        FROM ranked_samples
+        WHERE MOD(sample_index, :stride) = 0
+        ORDER BY norad_id, sample_index
     """)
 
     with engine.connect() as connection:
         results = connection.execute(
             query,
-            {"latest_generated_at": latest_generated_at},
+            {
+                "latest_generated_at": latest_generated_at,
+                "window_end": window_end,
+                "stride": stride,
+            },
         ).fetchall()
 
     if not results:
         logger.warning(
-            "GET /satellite-trajectories returned no rows for latest batch %s",
+            "GET /satellite-trajectories returned no rows for latest batch %s and window %s minutes",
             latest_generated_at,
+            window_minutes,
         )
         return {
             "generated_at": latest_generated_at.isoformat(),
-            "window_minutes": None,
-            "step_seconds": None,
+            "window_minutes": window_minutes,
+            "num_points": 0,
+            "step_seconds": (180 * 60) / (90 - 1),
+            "stride": stride,
             "satellites": [],
         }
 
@@ -340,10 +378,9 @@ def get_satellite_trajectories():
 
         norad_id = int(record["norad_id"])
         sample = [
-            record["sample_time"].isoformat(),
-            float(record["x_km"]),
-            float(record["y_km"]),
-            float(record["z_km"]),
+            round(float(record["x_km"]), 1),
+            round(float(record["y_km"]), 1),
+            round(float(record["z_km"]), 1),
         ]
 
         if current_norad_id is None:
@@ -367,17 +404,21 @@ def get_satellite_trajectories():
 
     total_elapsed = time.perf_counter() - total_start
     logger.info(
-        "GET /satellite-trajectories completed in %.3f seconds | db=%.3f | satellites=%d | rows=%d | generated_at=%s",
+        "GET /satellite-trajectories completed in %.3f seconds | db=%.3f | satellites=%d | rows=%d | generated_at=%s | window_minutes=%d | stride=%d",
         total_elapsed,
         db_elapsed,
         len(satellites),
         len(results),
         latest_generated_at.isoformat(),
+        window_minutes,
+        stride,
     )
 
     return {
         "generated_at": latest_generated_at.isoformat(),
-        "window_minutes": 10,
-        "step_seconds": 30,
+        "window_minutes": window_minutes,
+        "num_points": 90,
+        "step_seconds": (180 * 60) / (90 - 1),
+        "stride": stride,
         "satellites": satellites,
     }
