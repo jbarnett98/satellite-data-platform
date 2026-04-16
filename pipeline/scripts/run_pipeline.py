@@ -15,10 +15,13 @@ def run_pipeline() -> None:
     logger.info("Starting full satellite pipeline")
 
     fetch_result = fetch_satellite_data()
+
     if fetch_result == "not_updated":
-        logger.info("No new upstream TLE data available")
+        logger.info("No new upstream TLE data available; used latest S3 snapshot")
+    elif fetch_result == "fallback_used":
+        logger.warning("Upstream TLE fetch failed; using fallback TLE data from S3")
     elif fetch_result is False:
-        raise RuntimeError("TLE fetch step failed")
+        raise RuntimeError("TLE fetch step failed and no fallback data was available")
 
     metadata_result = fetch_satellite_metadata()
     if metadata_result is False:
