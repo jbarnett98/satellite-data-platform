@@ -23,6 +23,14 @@ def _s3_key(relative_path: str) -> str:
     return f"{S3_FRONTEND_PREFIX}{relative_path.lstrip('/')}"
 
 
+def _json_date(value):
+    if value is None:
+        return None
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return str(value)
+
+
 def export_satellites_json() -> None:
     """
     Export a lightweight initial satellite payload for the frontend.
@@ -95,13 +103,13 @@ def export_satellites_json() -> None:
             "y_km": round(float(record["y_km"]), 1),
             "z_km": round(float(record["z_km"]), 1),
             "altitude_km": round(float(record["altitude_km"]), 1) if record["altitude_km"] is not None else None,
-            "position_computed_at": record["position_computed_at"].isoformat() if record["position_computed_at"] else None,
+            "position_computed_at": _json_date(record.get("position_computed_at")),
 
             "object_name": record.get("object_name"),
             "object_id": record.get("object_id"),
             "object_type": record.get("object_type"),
             "owner": record.get("owner"),
-            "launch_date": record.get("launch_date").isoformat() if record.get("launch_date") else None,
+            "launch_date": _json_date(record.get("launch_date")),
             "launch_site": record.get("launch_site"),
             "apogee_km": float(record["apogee_km"]) if record.get("apogee_km") is not None else None,
             "perigee_km": float(record["perigee_km"]) if record.get("perigee_km") is not None else None,
@@ -236,10 +244,14 @@ def export_trajectories_json(window_minutes: int = 30, stride: int = 1) -> None:
     logger.info("Exported trajectories.json with %d satellites", len(satellites))
 
 
-def export_orbit_paths_json(chunk_size: int = 250) -> None:
+def export_orbit_paths_json(chunk_size: int = 100) -> None:
     """
     Export orbit paths in chunked files instead of one file per NORAD ID.
     Also writes an index so the frontend can locate the right chunk.
+
+    Each point is compacted to:
+    [timestamp, x_km, y_km, z_km]
+    to reduce payload size substantially.
     """
     query = text("""
         SELECT
@@ -265,6 +277,25 @@ def export_orbit_paths_json(chunk_size: int = 250) -> None:
         record = dict(row._mapping)
         norad_id = int(record["norad_id"])
 
+        raw_points = json.loads(record["points_json"])
+        compact_points = []
+
+        for point in raw_points:
+            if (
+                point.get("timestamp") is None or
+                point.get("x_km") is None or
+                point.get("y_km") is None or
+                point.get("z_km") is None
+            ):
+                continue
+
+            compact_points.append([
+                point["timestamp"],
+                round(float(point["x_km"]), 1),
+                round(float(point["y_km"]), 1),
+                round(float(point["z_km"]), 1),
+            ])
+
         chunk_number = idx // chunk_size
         chunk_key = f"orbit-paths/chunks/chunk-{chunk_number:04d}.json"
 
@@ -276,7 +307,7 @@ def export_orbit_paths_json(chunk_size: int = 250) -> None:
             "satellite": record["satellite"],
             "orbital_period_minutes": float(record["orbital_period_minutes"]),
             "path_source": "precomputed",
-            "points": json.loads(record["points_json"]),
+            "points": compact_points,
         }
 
         index_payload[str(norad_id)] = chunk_key
@@ -299,9 +330,15 @@ def export_orbit_paths_json(chunk_size: int = 250) -> None:
         len(index_payload),
     )
 
+
 def export_frontend_artifacts() -> None:
     logger.info("Exporting frontend artifacts")
     export_satellites_json()
     export_trajectories_json(window_minutes=30, stride=1)
-    export_orbit_paths_json()
+    export_orbit_paths_json(chunk_size=100)
     logger.info("Frontend artifact export complete")
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+    export_frontend_artifacts()

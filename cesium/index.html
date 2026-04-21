@@ -620,10 +620,10 @@
           const now = Date.now();
 
           let closestPoint = pathPoints[0];
-          let smallestDiff = Math.abs(new Date(pathPoints[0].timestamp).getTime() - now);
+          let smallestDiff = Math.abs(new Date(pathPoints[0][0]).getTime() - now);
 
           for (const point of pathPoints) {
-            const diff = Math.abs(new Date(point.timestamp).getTime() - now);
+            const diff = Math.abs(new Date(point[0]).getTime() - now);
             if (diff < smallestDiff) {
               smallestDiff = diff;
               closestPoint = point;
@@ -644,7 +644,11 @@
 
           animatedSatelliteEntity = viewer.entities.add({
             name: `${sat.satellite} (Live)`,
-            position: kmToCartesian(closestPoint),
+            position: new Cesium.Cartesian3(
+              Number(closestPoint[1]) * 1000,
+              Number(closestPoint[2]) * 1000,
+              Number(closestPoint[3]) * 1000
+            ),
             point: {
               pixelSize: 9,
               color: COLORS.animated,
@@ -653,14 +657,17 @@
             }
           });
         }
-
         function stepSelectedAnimation() {
           if (!animatedSatelliteEntity || currentOrbitPathData.length === 0) {
             return;
           }
 
           const closestPoint = getClosestPointToNow(currentOrbitPathData);
-          animatedSatelliteEntity.position = kmToCartesian(closestPoint);
+          animatedSatelliteEntity.position = new Cesium.Cartesian3(
+            Number(closestPoint[1]) * 1000,
+            Number(closestPoint[2]) * 1000,
+            Number(closestPoint[3]) * 1000
+          );
         }
 
         function startSelectedAnimation() {
@@ -697,12 +704,20 @@
             removeAnimatedSatellite();
 
             const validPoints = data.points.filter((point) =>
-              point.x_km != null &&
-              point.y_km != null &&
-              point.z_km != null
+              Array.isArray(point) &&
+              point.length >= 4 &&
+              point[1] != null &&
+              point[2] != null &&
+              point[3] != null
             );
 
-            const pathPositions = validPoints.map((point) => kmToCartesian(point));
+            const pathPositions = validPoints.map((point) =>
+              new Cesium.Cartesian3(
+                Number(point[1]) * 1000,
+                Number(point[2]) * 1000,
+                Number(point[3]) * 1000
+              )
+            );
 
             if (pathPositions.length === 0) {
               console.warn("No valid Cartesian orbit path points returned.");
