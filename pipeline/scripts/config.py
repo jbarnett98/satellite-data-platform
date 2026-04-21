@@ -44,3 +44,11 @@ S3_ARCHIVE_PREFIX = os.environ.get(
     "S3_ARCHIVE_PREFIX",
     "raw/celestrak/archive/"
 )
+
+S3_FRONTEND_PREFIX = os.environ.get(
+    "S3_FRONTEND_PREFIX",
+    "frontend-data/"
+)
+
+if not S3_FRONTEND_PREFIX.endswith("/"):
+    S3_FRONTEND_PREFIX += "/"

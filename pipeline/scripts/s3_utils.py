@@ -1,10 +1,16 @@
+import json
 import logging
 from datetime import datetime, timezone
 
 import boto3
 from botocore.exceptions import ClientError, NoCredentialsError, BotoCoreError
 
-from pipeline.scripts.config import AWS_REGION, S3_BUCKET, S3_LATEST_TLE_KEY, S3_ARCHIVE_PREFIX
+from pipeline.scripts.config import (
+    AWS_REGION,
+    S3_BUCKET,
+    S3_LATEST_TLE_KEY,
+    S3_ARCHIVE_PREFIX,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -44,3 +50,22 @@ def download_latest_tle() -> bytes | None:
     except (ClientError, NoCredentialsError, BotoCoreError) as e:
         logger.warning("Could not download fallback TLE snapshot from S3: %s", e)
         return None
+
+
+def upload_json_object(key: str, payload: dict | list, log_upload: bool = False) -> None:
+    body = json.dumps(
+        payload,
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+
+    s3.put_object(
+        Bucket=S3_BUCKET,
+        Key=key,
+        Body=body,
+        ContentType="application/json",
+        CacheControl="no-cache",
+    )
+
+    if log_upload:
+        logger.info("Uploaded JSON artifact to s3://%s/%s", S3_BUCKET, key)

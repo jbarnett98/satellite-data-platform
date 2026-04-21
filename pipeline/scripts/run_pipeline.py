@@ -7,6 +7,7 @@ from pipeline.scripts.store_in_sql import store_to_sql
 from pipeline.scripts.store_metadata_in_sql import store_metadata_to_sql
 from pipeline.scripts.generate_orbit_paths import generate_orbit_paths
 from pipeline.scripts.generate_trajectory_samples import generate_trajectory_samples
+from pipeline.scripts.export_frontend_artifacts import export_frontend_artifacts
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +44,9 @@ def run_pipeline() -> None:
 
     logger.info("Generating orbit paths from satellites_latest")
     generate_orbit_paths()
+
+    logger.info("Exporting frontend artifacts to S3")
+    export_frontend_artifacts()
 
     logger.info("Pipeline finished successfully")
 

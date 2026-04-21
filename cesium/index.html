@@ -186,10 +186,13 @@
   <script>
     Cesium.Ion.defaultAccessToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJjZTc2ZDhlMS1kOGMyLTRlODYtODkzMi0xMTY4ODQ5MDQ3YjgiLCJpZCI6NDE1MjI4LCJpYXQiOjE3NzU5ODEzMDV9.g4q42Fnd8K8dYHEJPzyP9hCZZaPzDHkrL7wgKX5OE0s";
 
-    const API_BASE_URL = "https://sa-b3a4209248f442df867133e8e8fa983e.ecs.eu-west-2.on.aws";
+    const STATIC_DATA_BASE_URL =
+      "https://jack-satellite-data-platform-raw.s3.eu-west-2.amazonaws.com/frontend-data";
+
+    // Legacy API base left here commented for later if you ever bring back a thin API.
+    // const API_BASE_URL = "https://your-api-domain";
+
     const TRAJECTORY_REFRESH_MS = 15 * 60 * 1000;
-    const TRAJECTORY_WINDOW_MINUTES = 30;
-    const TRAJECTORY_STRIDE = 1;
     const HOVER_PICK_WIDTH = 12;
     const HOVER_PICK_HEIGHT = 12;
 
@@ -222,18 +225,6 @@
         viewer.scene.moon.show = false;
         viewer.scene.skyAtmosphere.show = true;
 
-        // Uncomment when your skybox files are ready
-        // viewer.scene.skyBox = new Cesium.SkyBox({
-        //   sources: {
-        //     positiveX: "./skybox/px.jpg",
-        //     negativeX: "./skybox/nx.jpg",
-        //     positiveY: "./skybox/py.jpg",
-        //     negativeY: "./skybox/ny.jpg",
-        //     positiveZ: "./skybox/pz.jpg",
-        //     negativeZ: "./skybox/nz.jpg"
-        //   }
-        // });
-
         viewer.imageryLayers.removeAll();
 
         const nightLayer = await Cesium.IonImageryProvider.fromAssetId(3812);
@@ -263,6 +254,9 @@
         let selectedAnimationTimer = null;
         let currentOrbitPathData = [];
         let animationPaused = false;
+
+        let orbitPathIndex = null;
+        const orbitPathChunkCache = new Map();
 
         const COLORS = {
           normal: Cesium.Color.fromCssColorString("#7DD3FC").withAlpha(0.95),
@@ -309,13 +303,12 @@
           infoBox.innerHTML = `
             <strong>${sat.object_name || sat.satellite || "Unknown satellite"}</strong>
             <div><span class="label">NORAD ID:</span> <span class="value">${sat.norad_id ?? "N/A"}</span></div>
-            <div><span class="label">Object ID:</span> <span class="value">${sat.object_id ?? "N/A"}</span></div>
+            <div><span class="label">Orbit type:</span> <span class="value">${sat.orbit_type ?? "N/A"}</span></div>
+            <div><span class="label">Altitude:</span> <span class="value">${sat.altitude_km != null ? Number(sat.altitude_km).toFixed(1) : "N/A"} km</span></div>
             <div><span class="label">Object type:</span> <span class="value">${sat.object_type ?? "N/A"}</span></div>
             <div><span class="label">Owner:</span> <span class="value">${sat.owner ?? "N/A"}</span></div>
             <div><span class="label">Launch date:</span> <span class="value">${sat.launch_date ?? "N/A"}</span></div>
             <div><span class="label">Launch site:</span> <span class="value">${sat.launch_site ?? "N/A"}</span></div>
-            <div><span class="label">Orbit type:</span> <span class="value">${sat.orbit_type ?? "N/A"}</span></div>
-            <div><span class="label">Altitude:</span> <span class="value">${sat.altitude_km != null ? Number(sat.altitude_km).toFixed(1) : "N/A"} km</span></div>
             <div><span class="label">Apogee:</span> <span class="value">${sat.apogee_km ?? "N/A"} km</span></div>
             <div><span class="label">Perigee:</span> <span class="value">${sat.perigee_km ?? "N/A"} km</span></div>
             <div><span class="label">Inclination:</span> <span class="value">${sat.catalog_inclination_deg != null ? Number(sat.catalog_inclination_deg).toFixed(2) : "N/A"}°</span></div>
@@ -486,6 +479,16 @@
               norad_id: sat.norad_id ?? null,
               orbit_type: sat.orbit_type ?? null,
               altitude_km: sat.altitude_km ?? null,
+              position_computed_at: sat.position_computed_at ?? null,
+              object_name: sat.object_name ?? null,
+              object_id: sat.object_id ?? null,
+              object_type: sat.object_type ?? null,
+              owner: sat.owner ?? null,
+              launch_date: sat.launch_date ?? null,
+              launch_site: sat.launch_site ?? null,
+              apogee_km: sat.apogee_km ?? null,
+              perigee_km: sat.perigee_km ?? null,
+              catalog_inclination_deg: sat.catalog_inclination_deg ?? null,
               category: isStarlink ? "starlink" : "other"
             }
           });
@@ -495,25 +498,54 @@
         }
 
         async function fetchAllSatellites() {
-          const response = await fetch(`${API_BASE_URL}/satellites`);
+          const response = await fetch(`${STATIC_DATA_BASE_URL}/latest/satellites.json`);
 
           if (!response.ok) {
-            throw new Error(`API request failed with status ${response.status}`);
+            throw new Error(`Static satellites request failed with status ${response.status}`);
           }
 
           return await response.json();
         }
 
         async function fetchSatelliteTrajectories() {
-          const response = await fetch(
-            `${API_BASE_URL}/satellite-trajectories?window_minutes=${TRAJECTORY_WINDOW_MINUTES}&stride=${TRAJECTORY_STRIDE}`
-          );
+          const response = await fetch(`${STATIC_DATA_BASE_URL}/latest/trajectories.json`);
 
           if (!response.ok) {
-            throw new Error(`Trajectory request failed with status ${response.status}`);
+            throw new Error(`Static trajectories request failed with status ${response.status}`);
           }
 
           return await response.json();
+        }
+
+        async function fetchOrbitPathIndex() {
+          if (orbitPathIndex) {
+            return orbitPathIndex;
+          }
+
+          const response = await fetch(`${STATIC_DATA_BASE_URL}/orbit-paths/index.json`);
+
+          if (!response.ok) {
+            throw new Error(`Orbit path index request failed with status ${response.status}`);
+          }
+
+          orbitPathIndex = await response.json();
+          return orbitPathIndex;
+        }
+
+        async function fetchOrbitPathChunk(chunkKey) {
+          if (orbitPathChunkCache.has(chunkKey)) {
+            return orbitPathChunkCache.get(chunkKey);
+          }
+
+          const response = await fetch(`${STATIC_DATA_BASE_URL}/${chunkKey}`);
+
+          if (!response.ok) {
+            throw new Error(`Orbit path chunk request failed with status ${response.status}`);
+          }
+
+          const payload = await response.json();
+          orbitPathChunkCache.set(chunkKey, payload);
+          return payload;
         }
 
         function buildSampledPosition(samples, generatedAt, stepSeconds, stride = 1) {
@@ -543,7 +575,6 @@
           return property;
         }
 
-
         function applyTrajectoryData(payload) {
           if (!payload || !payload.satellites) {
             return;
@@ -572,6 +603,7 @@
           viewer.clock.shouldAnimate = !animationPaused;
           viewer.clock.multiplier = 1;
         }
+
         function startTrajectoryRefresh() {
           setInterval(async () => {
             try {
@@ -645,25 +677,21 @@
           selectedAnimationTimer = setInterval(stepSelectedAnimation, 1000);
         }
 
-        async function fetchSatelliteDetails(noradId) {
-          const response = await fetch(`${API_BASE_URL}/satellites/${noradId}`);
-
-          if (!response.ok) {
-            throw new Error(`Satellite detail request failed with status ${response.status}`);
-          }
-
-          return await response.json();
-        }
-
         async function loadOrbitPath(noradId, sat) {
           try {
-            const response = await fetch(`${API_BASE_URL}/satellites/${noradId}/orbit-path`);
+            const index = await fetchOrbitPathIndex();
+            const chunkKey = index[String(noradId)];
 
-            if (!response.ok) {
-              throw new Error(`Orbit path request failed with status ${response.status}`);
+            if (!chunkKey) {
+              throw new Error(`No orbit path chunk found for NORAD ${noradId}`);
             }
 
-            const data = await response.json();
+            const chunkPayload = await fetchOrbitPathChunk(chunkKey);
+            const data = chunkPayload[String(noradId)];
+
+            if (!data || !data.points) {
+              throw new Error(`Orbit path payload missing for NORAD ${noradId}`);
+            }
 
             clearOrbitPath();
             removeAnimatedSatellite();
@@ -710,6 +738,9 @@
           setLoadingStatus("Loading trajectory samples...");
           const trajectoryPayload = await fetchSatelliteTrajectories();
           applyTrajectoryData(trajectoryPayload);
+
+          setLoadingStatus("Loading orbit path index...");
+          await fetchOrbitPathIndex();
 
           flyToEuropeView(0);
           startTrajectoryRefresh();
@@ -821,7 +852,16 @@
             satellite: props.satellite ? props.satellite.getValue() : entity.name,
             norad_id: props.norad_id.getValue(),
             orbit_type: props.orbit_type ? props.orbit_type.getValue() : null,
-            altitude_km: props.altitude_km ? props.altitude_km.getValue() : null
+            altitude_km: props.altitude_km ? props.altitude_km.getValue() : null,
+            object_name: props.object_name ? props.object_name.getValue() : null,
+            object_id: props.object_id ? props.object_id.getValue() : null,
+            object_type: props.object_type ? props.object_type.getValue() : null,
+            owner: props.owner ? props.owner.getValue() : null,
+            launch_date: props.launch_date ? props.launch_date.getValue() : null,
+            launch_site: props.launch_site ? props.launch_site.getValue() : null,
+            apogee_km: props.apogee_km ? props.apogee_km.getValue() : null,
+            perigee_km: props.perigee_km ? props.perigee_km.getValue() : null,
+            catalog_inclination_deg: props.catalog_inclination_deg ? props.catalog_inclination_deg.getValue() : null
           };
 
           clearOrbitPath();
@@ -832,13 +872,7 @@
           selectedSatelliteEntity = entity;
           applySelectedStyle(entity);
 
-          try {
-            const detailedSat = await fetchSatelliteDetails(sat.norad_id);
-            updateInfoPanel(detailedSat);
-          } catch (err) {
-            console.error("Failed to load satellite details:", err);
-            updateInfoPanel(sat);
-          }
+          updateInfoPanel(sat);
 
           await loadOrbitPath(sat.norad_id, sat);
         }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
